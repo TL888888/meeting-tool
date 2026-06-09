@@ -1,0 +1,982 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>大量科技｜產銷會議記錄產生器</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<script src="https://unpkg.com/docx@8.5.0/build/index.umd.js"></script>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+
+  body {
+    font-family: 'Microsoft JhengHei', '微軟正黑體', Arial, sans-serif;
+    background: #f0f2f5;
+    min-height: 100vh;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+
+  /* ── 登入畫面 ── */
+  #loginScreen {
+    background: white;
+    border-radius: 16px;
+    padding: 48px 40px;
+    width: 380px;
+    box-shadow: 0 8px 40px rgba(0,0,0,0.12);
+    text-align: center;
+  }
+  #loginScreen .logo {
+    font-size: 13px;
+    color: #888;
+    letter-spacing: 2px;
+    text-transform: uppercase;
+    margin-bottom: 8px;
+  }
+  #loginScreen h1 {
+    font-size: 22px;
+    font-weight: 700;
+    color: #1a1a2e;
+    margin-bottom: 6px;
+  }
+  #loginScreen .subtitle {
+    font-size: 13px;
+    color: #999;
+    margin-bottom: 36px;
+  }
+  #loginScreen input {
+    width: 100%;
+    padding: 12px 16px;
+    border: 1.5px solid #e0e0e0;
+    border-radius: 8px;
+    font-size: 15px;
+    font-family: inherit;
+    margin-bottom: 12px;
+    outline: none;
+    transition: border-color 0.2s;
+  }
+  #loginScreen input:focus { border-color: #2563eb; }
+  #loginScreen button {
+    width: 100%;
+    padding: 13px;
+    background: #1a1a2e;
+    color: white;
+    border: none;
+    border-radius: 8px;
+    font-size: 15px;
+    font-weight: 600;
+    cursor: pointer;
+    font-family: inherit;
+    transition: background 0.2s;
+    margin-top: 4px;
+  }
+  #loginScreen button:hover { background: #2563eb; }
+  #loginError {
+    color: #ef4444;
+    font-size: 13px;
+    margin-top: 12px;
+    min-height: 18px;
+  }
+
+  /* ── 主畫面 ── */
+  #mainScreen {
+    display: none;
+    width: 100%;
+    min-height: 100vh;
+    flex-direction: column;
+  }
+
+  header {
+    background: #1a1a2e;
+    color: white;
+    padding: 0 32px;
+    height: 56px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    position: sticky;
+    top: 0;
+    z-index: 100;
+  }
+  header .brand { font-size: 15px; font-weight: 700; letter-spacing: 1px; }
+  header .user-info { font-size: 13px; color: #94a3b8; display: flex; align-items: center; gap: 16px; }
+  header .logout-btn {
+    background: transparent;
+    border: 1px solid #334155;
+    color: #94a3b8;
+    padding: 5px 12px;
+    border-radius: 6px;
+    font-size: 12px;
+    cursor: pointer;
+    font-family: inherit;
+    transition: all 0.2s;
+  }
+  header .logout-btn:hover { border-color: #64748b; color: white; }
+
+  .container {
+    max-width: 860px;
+    margin: 0 auto;
+    padding: 40px 24px;
+    width: 100%;
+  }
+
+  .page-title {
+    font-size: 24px;
+    font-weight: 700;
+    color: #1a1a2e;
+    margin-bottom: 6px;
+  }
+  .page-desc {
+    font-size: 14px;
+    color: #64748b;
+    margin-bottom: 32px;
+  }
+
+  /* ── 步驟卡片 ── */
+  .step-card {
+    background: white;
+    border-radius: 12px;
+    padding: 24px 28px;
+    margin-bottom: 20px;
+    box-shadow: 0 1px 6px rgba(0,0,0,0.06);
+    border: 1.5px solid #e8ecf0;
+  }
+  .step-header {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    margin-bottom: 18px;
+  }
+  .step-num {
+    width: 30px; height: 30px;
+    background: #1a1a2e;
+    color: white;
+    border-radius: 50%;
+    font-size: 13px;
+    font-weight: 700;
+    display: flex; align-items: center; justify-content: center;
+    flex-shrink: 0;
+  }
+  .step-title { font-size: 16px; font-weight: 700; color: #1a1a2e; }
+  .step-hint { font-size: 12px; color: #94a3b8; margin-left: auto; }
+
+  /* ── 拖曳區 ── */
+  .drop-zone {
+    border: 2px dashed #cbd5e1;
+    border-radius: 10px;
+    padding: 28px 20px;
+    text-align: center;
+    cursor: pointer;
+    transition: all 0.2s;
+    background: #f8fafc;
+    position: relative;
+  }
+  .drop-zone:hover, .drop-zone.drag-over {
+    border-color: #2563eb;
+    background: #eff6ff;
+  }
+  .drop-zone input[type=file] {
+    position: absolute; inset: 0; opacity: 0; cursor: pointer; width: 100%; height: 100%;
+  }
+  .drop-icon { font-size: 28px; margin-bottom: 8px; }
+  .drop-label { font-size: 14px; color: #64748b; }
+  .drop-label strong { color: #2563eb; }
+  .drop-accept { font-size: 11px; color: #94a3b8; margin-top: 4px; }
+
+  .file-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    background: #f0fdf4;
+    border: 1px solid #86efac;
+    border-radius: 8px;
+    padding: 8px 14px;
+    font-size: 13px;
+    color: #166534;
+    margin-top: 10px;
+  }
+  .file-badge .remove {
+    background: none; border: none; cursor: pointer;
+    color: #86efac; font-size: 16px; line-height: 1;
+    padding: 0 0 0 4px;
+  }
+  .file-badge .remove:hover { color: #ef4444; }
+
+  /* ── 三欄拖曳 ── */
+  .drop-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr 1fr;
+    gap: 14px;
+  }
+  .drop-col label { display: block; font-size: 12px; font-weight: 700; color: #475569; margin-bottom: 8px; letter-spacing: 0.5px; text-transform: uppercase; }
+
+  /* ── 產出按鈕 ── */
+  #generateBtn {
+    width: 100%;
+    padding: 16px;
+    background: #2563eb;
+    color: white;
+    border: none;
+    border-radius: 10px;
+    font-size: 16px;
+    font-weight: 700;
+    cursor: pointer;
+    font-family: inherit;
+    transition: all 0.2s;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 10px;
+  }
+  #generateBtn:hover:not(:disabled) { background: #1d4ed8; transform: translateY(-1px); box-shadow: 0 4px 16px rgba(37,99,235,0.3); }
+  #generateBtn:disabled { background: #94a3b8; cursor: not-allowed; transform: none; box-shadow: none; }
+
+  /* ── 進度 ── */
+  #progressArea {
+    display: none;
+    background: white;
+    border-radius: 12px;
+    padding: 24px 28px;
+    margin-bottom: 20px;
+    box-shadow: 0 1px 6px rgba(0,0,0,0.06);
+    border: 1.5px solid #e8ecf0;
+  }
+  .progress-title { font-size: 14px; font-weight: 700; color: #1a1a2e; margin-bottom: 16px; }
+  .progress-steps { display: flex; flex-direction: column; gap: 10px; }
+  .progress-step {
+    display: flex; align-items: center; gap: 12px;
+    font-size: 14px; color: #64748b;
+  }
+  .progress-step .icon { font-size: 16px; width: 20px; text-align: center; }
+  .progress-step.done { color: #16a34a; }
+  .progress-step.active { color: #2563eb; font-weight: 600; }
+  .progress-step.active .icon { animation: spin 1s linear infinite; display: inline-block; }
+  @keyframes spin { to { transform: rotate(360deg); } }
+
+  /* ── 結果 ── */
+  #resultArea {
+    display: none;
+    background: white;
+    border-radius: 12px;
+    padding: 28px;
+    margin-bottom: 20px;
+    box-shadow: 0 1px 6px rgba(0,0,0,0.06);
+    border: 1.5px solid #bbf7d0;
+    text-align: center;
+  }
+  #resultArea .success-icon { font-size: 40px; margin-bottom: 12px; }
+  #resultArea h3 { font-size: 18px; font-weight: 700; color: #166534; margin-bottom: 6px; }
+  #resultArea p { font-size: 14px; color: #64748b; margin-bottom: 20px; }
+  #downloadBtn {
+    display: inline-flex; align-items: center; gap: 8px;
+    padding: 12px 28px;
+    background: #16a34a; color: white;
+    border: none; border-radius: 8px;
+    font-size: 15px; font-weight: 600;
+    cursor: pointer; font-family: inherit;
+    transition: all 0.2s;
+  }
+  #downloadBtn:hover { background: #15803d; }
+
+  #errorArea {
+    display: none;
+    background: #fef2f2;
+    border: 1.5px solid #fca5a5;
+    border-radius: 12px;
+    padding: 20px 24px;
+    margin-bottom: 20px;
+    font-size: 14px;
+    color: #991b1b;
+  }
+</style>
+</head>
+<body>
+
+<!-- 登入畫面 -->
+<div id="loginScreen">
+  <div class="logo">大量科技股份有限公司</div>
+  <h1>產銷會議記錄</h1>
+  <div class="subtitle">請登入後使用</div>
+  <input type="text" id="loginUser" placeholder="帳號" autocomplete="username">
+  <input type="password" id="loginPass" placeholder="密碼" autocomplete="current-password">
+  <button onclick="doLogin()">登入</button>
+  <div id="loginError"></div>
+</div>
+
+<!-- 主畫面 -->
+<div id="mainScreen">
+  <header>
+    <div class="brand">大量科技｜產銷會議記錄產生器</div>
+    <div class="user-info">
+      <span id="userLabel"></span>
+      <button class="logout-btn" onclick="doLogout()">登出</button>
+    </div>
+  </header>
+
+  <div class="container">
+    <div class="page-title">每週產銷會議記錄</div>
+    <div class="page-desc">請依序上傳三個檔案，系統將自動產生本週會議記錄 Word 檔。</div>
+
+    <!-- Step 1 -->
+    <div class="step-card">
+      <div class="step-header">
+        <div class="step-num">1</div>
+        <div class="step-title">上傳三份檔案</div>
+        <div class="step-hint">拖曳或點擊上傳</div>
+      </div>
+      <div class="drop-grid">
+        <div class="drop-col">
+          <label>📹 會議錄影</label>
+          <div class="drop-zone" id="dropMp4" ondragover="dragOver(event,'dropMp4')" ondragleave="dragLeave('dropMp4')" ondrop="dropFile(event,'mp4')">
+            <input type="file" accept="video/mp4,.mp4" onchange="fileSelected(event,'mp4')">
+            <div class="drop-icon">🎬</div>
+            <div class="drop-label"><strong>點擊</strong>或拖曳</div>
+            <div class="drop-accept">MP4 影片</div>
+          </div>
+          <div id="badgeMp4"></div>
+        </div>
+        <div class="drop-col">
+          <label>📄 上週會議記錄</label>
+          <div class="drop-zone" id="dropDocx" ondragover="dragOver(event,'dropDocx')" ondragleave="dragLeave('dropDocx')" ondrop="dropFile(event,'docx')">
+            <input type="file" accept=".docx" onchange="fileSelected(event,'docx')">
+            <div class="drop-icon">📝</div>
+            <div class="drop-label"><strong>點擊</strong>或拖曳</div>
+            <div class="drop-accept">Word 檔 (.docx)</div>
+          </div>
+          <div id="badgeDocx"></div>
+        </div>
+        <div class="drop-col">
+          <label>📊 本週報告資料</label>
+          <div class="drop-zone" id="dropXlsx" ondragover="dragOver(event,'dropXlsx')" ondragleave="dragLeave('dropXlsx')" ondrop="dropFile(event,'xlsx')">
+            <input type="file" accept=".xlsx,.xls" onchange="fileSelected(event,'xlsx')">
+            <div class="drop-icon">📊</div>
+            <div class="drop-label"><strong>點擊</strong>或拖曳</div>
+            <div class="drop-accept">Excel 檔 (.xlsx)</div>
+          </div>
+          <div id="badgeXlsx"></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Step 2 產出 -->
+    <div class="step-card">
+      <div class="step-header">
+        <div class="step-num">2</div>
+        <div class="step-title">產出會議記錄</div>
+      </div>
+      <button id="generateBtn" onclick="startGenerate()" disabled>
+        <span>⚡</span> 產出本週會議記錄 Word 檔
+      </button>
+    </div>
+
+    <!-- 進度 -->
+    <div id="progressArea">
+      <div class="progress-title">處理中，請稍候…</div>
+      <div class="progress-steps">
+        <div class="progress-step" id="step_upload"><span class="icon">⏳</span> 上傳影片至 Gemini</div>
+        <div class="progress-step" id="step_analyze"><span class="icon">⏳</span> AI 分析會議影片內容</div>
+        <div class="progress-step" id="step_excel"><span class="icon">⏳</span> 讀取 Excel 報告資料</div>
+        <div class="progress-step" id="step_word"><span class="icon">⏳</span> 產生 Word 會議記錄</div>
+      </div>
+    </div>
+
+    <!-- 錯誤 -->
+    <div id="errorArea"></div>
+
+    <!-- 結果 -->
+    <div id="resultArea">
+      <div class="success-icon">✅</div>
+      <h3>會議記錄已產生！</h3>
+      <p id="resultDesc"></p>
+      <button id="downloadBtn" onclick="downloadDocx()">⬇️ 下載 Word 檔</button>
+    </div>
+  </div>
+</div>
+
+<script>
+// ── 設定 ──
+const API_KEY = 'AIzaSyDm2kWBjeQAyLIM64xYfMbrhTcwnJiL7fw';
+const ACCOUNTS = {
+  'tlpmc':  { pass: 'Tl3686368',  name: '生管部' },
+  'sales':  { pass: 'Tl$$$$$$',   name: '營業部' }
+};
+
+// ── 狀態 ──
+let files = { mp4: null, docx: null, xlsx: null };
+let docxBlob = null;
+let docxFilename = '';
+
+// ── 登入 ──
+function doLogin() {
+  const u = document.getElementById('loginUser').value.trim();
+  const p = document.getElementById('loginPass').value;
+  const acc = ACCOUNTS[u];
+  if (acc && acc.pass === p) {
+    document.getElementById('loginScreen').style.display = 'none';
+    const ms = document.getElementById('mainScreen');
+    ms.style.display = 'flex';
+    document.getElementById('userLabel').textContent = acc.name + '　' + u;
+  } else {
+    document.getElementById('loginError').textContent = '帳號或密碼錯誤，請重新輸入。';
+  }
+}
+document.getElementById('loginPass').addEventListener('keydown', e => { if (e.key === 'Enter') doLogin(); });
+document.getElementById('loginUser').addEventListener('keydown', e => { if (e.key === 'Enter') doLogin(); });
+
+function doLogout() {
+  document.getElementById('mainScreen').style.display = 'none';
+  document.getElementById('loginScreen').style.display = 'block';
+  document.getElementById('loginUser').value = '';
+  document.getElementById('loginPass').value = '';
+  document.getElementById('loginError').textContent = '';
+  files = { mp4: null, docx: null, xlsx: null };
+  ['badgeMp4','badgeDocx','badgeXlsx'].forEach(id => document.getElementById(id).innerHTML = '');
+  document.getElementById('resultArea').style.display = 'none';
+  document.getElementById('progressArea').style.display = 'none';
+  document.getElementById('errorArea').style.display = 'none';
+  checkReady();
+}
+
+// ── 拖曳 ──
+function dragOver(e, id) { e.preventDefault(); document.getElementById(id).classList.add('drag-over'); }
+function dragLeave(id) { document.getElementById(id).classList.remove('drag-over'); }
+function dropFile(e, type) {
+  e.preventDefault();
+  const id = { mp4: 'dropMp4', docx: 'dropDocx', xlsx: 'dropXlsx' }[type];
+  document.getElementById(id).classList.remove('drag-over');
+  const file = e.dataTransfer.files[0];
+  if (file) setFile(type, file);
+}
+function fileSelected(e, type) {
+  const file = e.target.files[0];
+  if (file) setFile(type, file);
+}
+function setFile(type, file) {
+  files[type] = file;
+  const badgeId = { mp4: 'badgeMp4', docx: 'badgeDocx', xlsx: 'badgeXlsx' }[type];
+  const size = (file.size / 1024 / 1024).toFixed(1);
+  document.getElementById(badgeId).innerHTML =
+    `<div class="file-badge">✓ ${file.name} <span class="remove" onclick="removeFile('${type}')">×</span></div>`;
+  checkReady();
+}
+function removeFile(type) {
+  files[type] = null;
+  const badgeId = { mp4: 'badgeMp4', docx: 'badgeDocx', xlsx: 'badgeXlsx' }[type];
+  document.getElementById(badgeId).innerHTML = '';
+  checkReady();
+}
+function checkReady() {
+  const ready = files.mp4 && files.docx && files.xlsx;
+  document.getElementById('generateBtn').disabled = !ready;
+}
+
+// ── 進度更新 ──
+function setStep(id, state) {
+  const el = document.getElementById(id);
+  el.className = 'progress-step ' + state;
+  const icons = { active: '⏳', done: '✅', error: '❌' };
+  el.querySelector('.icon').textContent = icons[state] || '⏳';
+}
+
+// ── 主流程 ──
+async function startGenerate() {
+  document.getElementById('generateBtn').disabled = true;
+  document.getElementById('resultArea').style.display = 'none';
+  document.getElementById('errorArea').style.display = 'none';
+  document.getElementById('progressArea').style.display = 'block';
+  ['step_upload','step_analyze','step_excel','step_word'].forEach(s => setStep(s, ''));
+
+  try {
+    // Step 1: 上傳影片
+    setStep('step_upload', 'active');
+    const videoUri = await uploadVideoToGemini(files.mp4);
+    setStep('step_upload', 'done');
+
+    // Step 2: AI分析
+    setStep('step_analyze', 'active');
+    const transcript = await analyzeVideo(videoUri);
+    setStep('step_analyze', 'done');
+
+    // Step 3: 讀Excel
+    setStep('step_excel', 'active');
+    const excelData = await readExcel(files.xlsx);
+    setStep('step_excel', 'done');
+
+    // Step 4: 產Word
+    setStep('step_word', 'active');
+    const { blob, filename } = await buildDocx(transcript, excelData);
+    docxBlob = blob;
+    docxFilename = filename;
+    setStep('step_word', 'done');
+
+    // 完成
+    document.getElementById('resultDesc').textContent = '檔名：' + filename;
+    document.getElementById('resultArea').style.display = 'block';
+
+  } catch (err) {
+    document.getElementById('errorArea').style.display = 'block';
+    document.getElementById('errorArea').textContent = '❌ 發生錯誤：' + err.message;
+    ['step_upload','step_analyze','step_excel','step_word'].forEach(s => {
+      if (document.getElementById(s).classList.contains('active')) setStep(s, 'error');
+    });
+  } finally {
+    document.getElementById('generateBtn').disabled = false;
+  }
+}
+
+// ── 上傳影片到 Gemini File API ──
+async function uploadVideoToGemini(file) {
+  const arrayBuffer = await file.arrayBuffer();
+  const bytes = new Uint8Array(arrayBuffer);
+
+  // 取得上傳 URL
+  const initResp = await fetch(
+    `https://generativelanguage.googleapis.com/upload/v1beta/files?key=${API_KEY}`,
+    {
+      method: 'POST',
+      headers: {
+        'X-Goog-Upload-Protocol': 'resumable',
+        'X-Goog-Upload-Command': 'start',
+        'X-Goog-Upload-Header-Content-Length': bytes.length,
+        'X-Goog-Upload-Header-Content-Type': 'video/mp4',
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({ file: { display_name: file.name } })
+    }
+  );
+  if (!initResp.ok) throw new Error('影片上傳初始化失敗：' + await initResp.text());
+  const uploadUrl = initResp.headers.get('X-Goog-Upload-URL');
+
+  // 上傳檔案
+  const uploadResp = await fetch(uploadUrl, {
+    method: 'POST',
+    headers: {
+      'X-Goog-Upload-Command': 'upload, finalize',
+      'X-Goog-Upload-Offset': '0',
+      'Content-Type': 'video/mp4'
+    },
+    body: bytes
+  });
+  if (!uploadResp.ok) throw new Error('影片上傳失敗：' + await uploadResp.text());
+  const uploadData = await uploadResp.json();
+  const fileUri = uploadData.file?.uri;
+  if (!fileUri) throw new Error('無法取得影片 URI');
+
+  // 等待處理完成
+  let state = uploadData.file?.state;
+  let attempts = 0;
+  while (state === 'PROCESSING' && attempts < 30) {
+    await new Promise(r => setTimeout(r, 3000));
+    const statusResp = await fetch(
+      `https://generativelanguage.googleapis.com/v1beta/files/${uploadData.file.name.split('/').pop()}?key=${API_KEY}`
+    );
+    const statusData = await statusResp.json();
+    state = statusData.file?.state || statusData.state;
+    attempts++;
+  }
+  if (state !== 'ACTIVE') throw new Error('影片處理逾時，請稍後再試。');
+  return fileUri;
+}
+
+// ── 分析影片 ──
+async function analyzeVideo(videoUri) {
+  const prompt = `這是一個產銷會議錄影。
+請完成以下兩個任務：
+
+1. 找出會議中主席詢問「南京有事情要討論嗎」或「漣水有事情要討論嗎」或「台灣有事情要討論嗎」之後的討論內容，這段是"其他事項"。
+請逐字轉錄台灣、南京、漣水各廠的發言內容，盡量完整。
+
+2. 如果有提到物料管理相關的數字（如主軸在庫數量、控制器數量等），請一併記錄。
+
+請用以下格式回覆（JSON格式）：
+{
+  "taiwan_other": "台灣廠其他事項逐字內容",
+  "nanjing_other": "南京廠其他事項逐字內容",
+  "lianshui_other": "漣水廠其他事項逐字內容",
+  "material_notes": "物料管理相關內容（如無則填空字串）",
+  "meeting_date_hint": "影片中提到的日期或週別（如有）"
+}`;
+
+  const resp = await fetch(
+    `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${API_KEY}`,
+    {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        contents: [{
+          parts: [
+            { text: prompt },
+            { file_data: { mime_type: 'video/mp4', file_uri: videoUri } }
+          ]
+        }],
+        generationConfig: { temperature: 0.1 }
+      })
+    }
+  );
+  if (!resp.ok) throw new Error('Gemini 分析失敗：' + await resp.text());
+  const data = await resp.json();
+  const text = data.candidates?.[0]?.content?.parts?.[0]?.text || '';
+
+  // 解析JSON
+  try {
+    const clean = text.replace(/```json|```/g, '').trim();
+    return JSON.parse(clean);
+  } catch {
+    // 若解析失敗，直接回傳原始文字
+    return {
+      taiwan_other: text,
+      nanjing_other: '',
+      lianshui_other: '',
+      material_notes: '',
+      meeting_date_hint: ''
+    };
+  }
+}
+
+// ── 讀取Excel ──
+async function readExcel(file) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = (e) => {
+      try {
+        const wb = XLSX.read(e.target.result, { type: 'array' });
+        const data = {};
+
+        // 產能供給
+        if (wb.SheetNames.includes('產能供給')) {
+          const ws = wb.Sheets['產能供給'];
+          const rows = XLSX.utils.sheet_to_json(ws, { header: 1, defval: '' });
+          data.capacity = rows;
+        }
+
+        // 庫存機
+        if (wb.SheetNames.includes('庫存機')) {
+          const ws = wb.Sheets['庫存機'];
+          const rows = XLSX.utils.sheet_to_json(ws, { header: 1, defval: '' });
+          data.inventory = rows;
+        }
+
+        // 庫存去化案
+        if (wb.SheetNames.includes('庫存去化案')) {
+          const ws = wb.Sheets['庫存去化案'];
+          const rows = XLSX.utils.sheet_to_json(ws, { header: 1, defval: '' });
+          data.reduction = rows;
+        }
+
+        // 投產計畫表7月
+        const julySheet = wb.SheetNames.find(n => n.includes('投產') && n.includes('7'));
+        if (julySheet) {
+          const ws = wb.Sheets[julySheet];
+          const rows = XLSX.utils.sheet_to_json(ws, { header: 1, defval: '' });
+          data.julyPlan = rows;
+        }
+
+        resolve(data);
+      } catch(err) { reject(err); }
+    };
+    reader.onerror = reject;
+    reader.readAsArrayBuffer(file);
+  });
+}
+
+// ── 從Excel萃取關鍵數字 ──
+function extractNumbers(excelData) {
+  const result = {
+    cap6_tw: '－', cap6_nj: '－', cap6_ls: '－',
+    wip_tw: '－', wip_nj: '－', wip_ls: '－',
+    last_done_tw: '－', last_done_nj: '－', last_done_ls: '－',
+    last_rate_nj: '－', last_rate_ls: '－',
+    this_plan_tw: '－', this_plan_nj: '－', this_plan_ls: '－',
+    cap7_tw: '－', cap7_nj: '－', cap7_ls: '－',
+    inv_tw_total: '－', inv_tw_has: '－', inv_tw_no: '－',
+    inv_nj_total: '－', inv_nj_has: '－', inv_nj_no: '－',
+    inv_ls_total: '－', inv_ls_has: '－', inv_ls_no: '－',
+    weekLabel_last: '', weekLabel_this: ''
+  };
+
+  const cap = excelData.capacity || [];
+  // 掃描產能數字
+  for (let i = 0; i < Math.min(cap.length, 5); i++) {
+    const row = cap[i];
+    for (let j = 0; j < row.length; j++) {
+      const v = String(row[j]);
+      if (v.includes('6月投') || v.includes('6月投產')) {
+        // 台灣
+        if (j < 6 && result.cap6_tw === '－') result.cap6_tw = String(row[j+2] || '－').trim();
+        // 南京
+        if (j >= 6 && j < 12 && result.cap6_nj === '－') result.cap6_nj = String(row[j+2] || '－').trim();
+        // 漣水
+        if (j >= 12 && result.cap6_ls === '－') result.cap6_ls = String(row[j+2] || '－').trim();
+      }
+    }
+  }
+
+  // WIP
+  for (let i = 0; i < Math.min(cap.length, 20); i++) {
+    const row = cap[i];
+    const rowStr = row.join('\t');
+    if (rowStr.includes('未完工') || rowStr.includes('在製')) {
+      const nums = row.filter(v => typeof v === 'number' && v > 0 && v < 500);
+      if (nums.length >= 3) {
+        result.wip_tw = String(nums[0]);
+        result.wip_nj = String(nums[1]);
+        result.wip_ls = String(nums[2]);
+      }
+      break;
+    }
+  }
+
+  // 週產能追蹤
+  for (let i = 0; i < cap.length; i++) {
+    const row = cap[i];
+    const rowStr = row.join('\t');
+    if (rowStr.includes('上週完工')) {
+      // 找日期標籤
+      const dateMatch = rowStr.match(/(\d+\/W\d+[：:][^\t]+)/);
+      if (dateMatch) result.weekLabel_last = dateMatch[1];
+      // 找數字
+      const nums = row.filter(v => typeof v === 'number' && v > 0 && v < 500);
+      if (nums.length >= 3) {
+        result.last_done_tw = String(nums[0]);
+        result.last_done_nj = String(nums[1]);
+        result.last_done_ls = String(nums[2]);
+      }
+    }
+    if (rowStr.includes('本週完工計畫') || rowStr.includes('本週完工')) {
+      const dateMatch = rowStr.match(/(\d+\/W\d+[：:][^\t]+)/);
+      if (dateMatch) result.weekLabel_this = dateMatch[1];
+      const nums = row.filter(v => typeof v === 'number' && v > 0 && v < 500);
+      if (nums.length >= 3) {
+        result.this_plan_tw = String(nums[0]);
+        result.this_plan_nj = String(nums[1]);
+        result.this_plan_ls = String(nums[2]);
+      }
+    }
+  }
+
+  // 7月投產
+  const july = excelData.julyPlan || [];
+  for (let i = 0; i < Math.min(july.length, 5); i++) {
+    const row = july[i];
+    for (let j = 0; j < row.length; j++) {
+      const v = String(row[j]);
+      if (v.includes('7月投') || v.includes('7月投產')) {
+        if (j < 7 && result.cap7_tw === '－') result.cap7_tw = String(row[j+2] || '－').trim();
+        if (j >= 7 && j < 14 && result.cap7_nj === '－') result.cap7_nj = String(row[j+2] || '－').trim();
+        if (j >= 14 && result.cap7_ls === '－') result.cap7_ls = String(row[j+2] || '－').trim();
+      }
+    }
+  }
+
+  // 庫存機
+  const inv = excelData.inventory || [];
+  let section = '';
+  for (let i = 0; i < inv.length; i++) {
+    const row = inv[i];
+    const rowStr = row.join('\t');
+    if (rowStr.includes('\nTW') || row[0] === 'TW') section = 'TW';
+    if (rowStr.includes('\nNJ') || row[0] === 'NJ') section = 'NJ';
+    if (rowStr.includes('\nLS') || row[0] === 'LS') section = 'LS';
+    if (row[0] === '總計' || rowStr.startsWith('總計')) {
+      const nums = row.filter(v => typeof v === 'number' && v > 0);
+      if (section === 'TW' && nums.length >= 2) {
+        result.inv_tw_total = String(nums[0]);
+        result.inv_tw_has = String(nums[1]);
+        result.inv_tw_no = String(nums[0] - nums[1]);
+      } else if (section === 'NJ' && nums.length >= 2) {
+        result.inv_nj_total = String(nums[0]);
+        result.inv_nj_has = String(nums[1]);
+        result.inv_nj_no = String(nums[0] - nums[1]);
+      } else if (section === 'LS' && nums.length >= 2) {
+        result.inv_ls_total = String(nums[0]);
+        result.inv_ls_has = String(nums[1]);
+        result.inv_ls_no = String(nums[0] - nums[1]);
+      }
+    }
+  }
+
+  return result;
+}
+
+// ── 計算本週日期 ──
+function getMeetingDate() {
+  const now = new Date();
+  // 找最近的週一
+  const day = now.getDay();
+  const diff = day === 0 ? -6 : 1 - day;
+  const monday = new Date(now);
+  monday.setDate(now.getDate() + diff);
+  const m = monday.getMonth() + 1;
+  const d = monday.getDate();
+  return `${m}月${d}日`;
+}
+
+// ── 產生Word ──
+async function buildDocx(transcript, excelData) {
+  const docxLib = window.docx;
+  const { Document, Packer, Paragraph, TextRun, Table, TableRow, TableCell,
+    AlignmentType, WidthType, BorderStyle, ShadingType, VerticalAlign } = docxLib;
+
+  const nums = extractNumbers(excelData);
+  const meetingDate = getMeetingDate();
+  const year = new Date().getFullYear() - 1911; // 民國年
+  const filename = `產銷會議記錄${String(year).slice(-2)}${String(new Date().getMonth()+1).padStart(2,'0')}${String(new Date().getDate()).padStart(2,'0')}.docx`;
+
+  const bdr = { style: BorderStyle.SINGLE, size: 4, color: "000000" };
+  const borders = { top: bdr, bottom: bdr, left: bdr, right: bdr };
+
+  function C(text, opts = {}) {
+    const { bold = false, size = 20, colSpan, shading, align = AlignmentType.LEFT, width } = opts;
+    const lines = String(text).split('\n');
+    const paras = lines.map((line, idx) => new Paragraph({
+      alignment: align,
+      spacing: idx === 0 ? {} : { before: 40 },
+      children: [new TextRun({ text: line, bold, size, font: "標楷體" })]
+    }));
+    return new TableCell({
+      borders,
+      ...(shading ? { shading: { fill: shading, type: ShadingType.CLEAR } } : {}),
+      ...(colSpan ? { columnSpan: colSpan } : {}),
+      verticalAlign: VerticalAlign.CENTER,
+      width: width ? { size: width, type: WidthType.DXA } : undefined,
+      margins: { top: 80, bottom: 80, left: 120, right: 120 },
+      children: paras
+    });
+  }
+
+  function H(text, opts = {}) {
+    return C(text, { ...opts, bold: true, shading: "D9D9D9" });
+  }
+
+  function R(...cells) { return new TableRow({ children: cells }); }
+
+  const W = 9200;
+  const c1=680, c2=5640, c3=1440, c4=1440;
+
+  // 其他事項內容
+  const twOther = transcript.taiwan_other || '（無）';
+  const njOther = transcript.nanjing_other || '（無）';
+  const lsOther = transcript.lianshui_other || '（無）';
+  const matNotes = transcript.material_notes || '（請參考上週記錄）';
+
+  // 週完工標籤
+  const lastWeekRange = nums.weekLabel_last || '上週';
+  const thisWeekRange = nums.weekLabel_this || '本週';
+
+  const doc = new Document({
+    styles: { default: { document: { run: { font: "標楷體", size: 22 } } } },
+    sections: [{
+      properties: {
+        page: {
+          size: { width: 12240, height: 15840 },
+          margin: { top: 720, right: 720, bottom: 720, left: 720 }
+        }
+      },
+      children: [
+        new Paragraph({ alignment: AlignmentType.CENTER, spacing: { before: 0, after: 100 },
+          children: [new TextRun({ text: "大量科技股份有限公司", bold: true, size: 28, font: "標楷體" })] }),
+        new Paragraph({ alignment: AlignmentType.CENTER, spacing: { before: 0, after: 160 },
+          children: [new TextRun({ text: "會議紀錄", bold: true, size: 28, font: "標楷體" })] }),
+
+        // 基本資訊
+        new Table({
+          width: { size: W, type: WidthType.DXA },
+          columnWidths: [Math.floor(W/3), Math.floor(W/3), W - Math.floor(W/3)*2],
+          rows: [
+            R(C("會議名稱：產銷會議",{size:20,width:Math.floor(W/3)}), C("主席：高豪賢",{size:20,width:Math.floor(W/3)}), C(`時間：${meetingDate} PM 03:00`,{size:20,width:W-Math.floor(W/3)*2})),
+            R(C("地點：VooV",{size:20,width:Math.floor(W/3)}), C("上級指導：",{size:20,width:Math.floor(W/3)}), C("記錄：Gemini",{size:20,width:W-Math.floor(W/3)*2}))
+          ]
+        }),
+        new Table({
+          width: { size: W, type: WidthType.DXA }, columnWidths: [W],
+          rows: [R(C("出席人員： 台灣廠：營業-林經理、楊佩雯、資材-黃經理、黃進禧、品保-林經理　南京廠：李平課長、李月娥、業務-丁麗娟課長　漣水廠：嚴副總、資材-王蓉蓉、高翠芹、陳磊、葛翠玲、營業-韓淑媛",{size:20,width:W}))]
+        }),
+
+        new Paragraph({ spacing: { before: 80, after: 0 }, children: [] }),
+
+        // 主表
+        new Table({
+          width: { size: W, type: WidthType.DXA },
+          columnWidths: [c1, c2, c3, c4],
+          rows: [
+            // 表頭
+            R(H("項次",{size:20,width:c1,align:AlignmentType.CENTER}), H("決議事項",{size:20,width:c2,align:AlignmentType.CENTER}), H("擔當者",{size:20,width:c3,align:AlignmentType.CENTER}), H("完成期限",{size:20,width:c4,align:AlignmentType.CENTER})),
+
+            // 1 六個月銷售預測
+            R(C("1.",{size:20,width:c1,align:AlignmentType.CENTER}),
+              C(`【六個月銷售預測（備料異動）】\n請看附檔：六個月銷售預測_備料異動說明_2026年(${meetingDate.replace('日','').replace('月','-W')}).xlsx。\n因目前客戶急單時，會由南京&漣水同時出設備給同一個客戶，並也會有各廠因為客戶取消後，因設備料件都有陸續再切換，舊的料還是要安排去化，如果二廠有確定同家客戶料件使用上的不同時，要提早回信跟業務知悉，好讓業務與客戶先知會這部份，如客戶無法接受的話，廠內就要重新回覆新的交期，以符合客戶需求規格。`,{size:20,width:c2}),
+              C("營業部\n生管\n資材",{size:20,width:c3,align:AlignmentType.CENTER}), C("即日起",{size:20,width:c4,align:AlignmentType.CENTER})),
+
+            // 2 上週產銷追踪
+            R(C("2.",{size:20,width:c1,align:AlignmentType.CENTER}),
+              C("【上週產銷追踪】\n無。",{size:20,width:c2}),
+              C("各廠",{size:20,width:c3,align:AlignmentType.CENTER}), C("即日起",{size:20,width:c4,align:AlignmentType.CENTER})),
+
+            // 3 產能供給
+            R(C("3.",{size:20,width:c1,align:AlignmentType.CENTER}),
+              C(`【產能供給（6月投產）】\n● 台灣廠：${nums.cap6_tw} 台\n● 南京廠：${nums.cap6_nj} 台\n● 漣水廠：${nums.cap6_ls} 台`,{size:20,width:c2}),
+              C("營業部\n南京廠\n漣水廠",{size:20,width:c3,align:AlignmentType.CENTER}), C("即日起",{size:20,width:c4,align:AlignmentType.CENTER})),
+
+            // 4 WIP
+            R(C("4.",{size:20,width:c1,align:AlignmentType.CENTER}),
+              C(`【未完工在製品 (WIP)】\n● 台灣廠：${nums.wip_tw} 台\n● 南京廠：${nums.wip_nj} 台\n● 漣水廠：${nums.wip_ls} 台`,{size:20,width:c2}),
+              C("生管\n資材部\n生產部",{size:20,width:c3,align:AlignmentType.CENTER}), C("即日起",{size:20,width:c4,align:AlignmentType.CENTER})),
+
+            // 5 週產能追蹤
+            R(C("5.",{size:20,width:c1,align:AlignmentType.CENTER}),
+              C(`【週產能追蹤】\n● 上週完工 (${lastWeekRange})：台灣廠 ${nums.last_done_tw} 台；南京廠 ${nums.last_done_nj} 台；漣水廠 ${nums.last_done_ls} 台。\n● 本週完工計畫 (${thisWeekRange})：台灣廠計 ${nums.this_plan_tw} 台；南京廠計 ${nums.this_plan_nj} 台；漣水廠計 ${nums.this_plan_ls} 台。`,{size:20,width:c2}),
+              C("生管\n資材部\n生產部\n品保部",{size:20,width:c3,align:AlignmentType.CENTER}), C("即日起",{size:20,width:c4,align:AlignmentType.CENTER})),
+
+            // 6 7月投產計畫
+            R(C("6.",{size:20,width:c1,align:AlignmentType.CENTER}),
+              C(`【投產計畫表 (7月)】\n● 台灣廠：${nums.cap7_tw} 台\n● 南京廠：${nums.cap7_nj} 台\n● 漣水廠：${nums.cap7_ls} 台`,{size:20,width:c2}),
+              C("營業部\n生管",{size:20,width:c3,align:AlignmentType.CENTER}), C("即日起",{size:20,width:c4,align:AlignmentType.CENTER})),
+
+            // 7 庫存機
+            R(C("7.",{size:20,width:c1,align:AlignmentType.CENTER}),
+              C(`【庫存機統計】\n● 台灣廠：${nums.inv_tw_total} 台 (有客戶 ${nums.inv_tw_has} / 無客戶 ${nums.inv_tw_no})\n● 南京廠：${nums.inv_nj_total} 台 (有客戶 ${nums.inv_nj_has} / 無客戶 ${nums.inv_nj_no})\n● 漣水廠：${nums.inv_ls_total} 台 (有客戶 ${nums.inv_ls_has} / 無客戶 ${nums.inv_ls_no})`,{size:20,width:c2}),
+              C("營業部\n生管",{size:20,width:c3,align:AlignmentType.CENTER}), C("即日起",{size:20,width:c4,align:AlignmentType.CENTER})),
+
+            // 8 庫存去化案
+            R(C("8.",{size:20,width:c1,align:AlignmentType.CENTER}),
+              C("【庫存去化案】\n本週無異動，庫存數量維持 70 台。",{size:20,width:c2}),
+              C("營業部\n生管\n資材部",{size:20,width:c3,align:AlignmentType.CENTER}), C("即日起",{size:20,width:c4,align:AlignmentType.CENTER})),
+
+            // 9 物料管理
+            R(C("9.",{size:20,width:c1,align:AlignmentType.CENTER}),
+              C(`【物料管理】\n${matNotes}`,{size:20,width:c2}),
+              C("資材部",{size:20,width:c3,align:AlignmentType.CENTER}), C("即日起",{size:20,width:c4,align:AlignmentType.CENTER})),
+
+            // 10 其他事項
+            R(C("10.",{size:20,width:c1,align:AlignmentType.CENTER}),
+              C(`【其他事項】\n●台灣：\n${twOther}\n\n●南京：\n${njOther}\n\n●漣水：\n${lsOther}`,{size:20,width:c2}),
+              C("各廠",{size:20,width:c3,align:AlignmentType.CENTER}), C("即日起",{size:20,width:c4,align:AlignmentType.CENTER})),
+
+            // 11 上級指導
+            R(C("11.",{size:20,width:c1,align:AlignmentType.CENTER}),
+              C("【上級指導總結】\n無。",{size:20,width:c2}),
+              C("",{size:20,width:c3}), C("",{size:20,width:c4})),
+          ]
+        })
+      ]
+    }]
+  });
+
+  const blob = await Packer.toBlob(doc);
+  return { blob, filename };
+}
+
+// ── 下載 ──
+function downloadDocx() {
+  if (!docxBlob) return;
+  const url = URL.createObjectURL(docxBlob);
+  const a = document.createElement('a');
+  a.href = url; a.download = docxFilename;
+  document.body.appendChild(a); a.click();
+  document.body.removeChild(a);
+  URL.revokeObjectURL(url);
+}
+</script>
+</body>
+</html>
