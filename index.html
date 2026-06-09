@@ -679,6 +679,12 @@ function extractNumbers(excelData) {
 
   const cap = excelData.capacity || [];
 
+  // DEBUG: 印出關鍵行
+  console.log('=== Excel Debug ===');
+  [71,72,124,125,151,152].forEach(i => {
+    if (cap[i]) console.log(`Row${i+1}: r0="${cap[i][0]}" r2=${cap[i][2]} r4=${cap[i][4]} r8=${cap[i][8]} r10=${cap[i][10]} r14=${cap[i][14]} r16=${cap[i][16]}`);
+  });
+
   // 掃描所有行
   let foundWip = false, foundLastDone = false, foundThisPlan = false;
   for (let i = 0; i < cap.length; i++) {
