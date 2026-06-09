@@ -669,7 +669,6 @@ function extractNumbers(excelData) {
     cap6_tw: '－', cap6_nj: '－', cap6_ls: '－',
     wip_tw: '－', wip_nj: '－', wip_ls: '－',
     last_done_tw: '－', last_done_nj: '－', last_done_ls: '－',
-    last_rate_nj: '－', last_rate_ls: '－',
     this_plan_tw: '－', this_plan_nj: '－', this_plan_ls: '－',
     cap7_tw: '－', cap7_nj: '－', cap7_ls: '－',
     inv_tw_total: '－', inv_tw_has: '－', inv_tw_no: '－',
@@ -679,62 +678,58 @@ function extractNumbers(excelData) {
   };
 
   const cap = excelData.capacity || [];
-  // 掃描產能數字
-  for (let i = 0; i < Math.min(cap.length, 5); i++) {
-    const row = cap[i];
-    for (let j = 0; j < row.length; j++) {
-      const v = String(row[j]);
-      if (v.includes('6月投') || v.includes('6月投產')) {
-        // 台灣
-        if (j < 6 && result.cap6_tw === '－') result.cap6_tw = String(row[j+2] || '－').trim();
-        // 南京
-        if (j >= 6 && j < 12 && result.cap6_nj === '－') result.cap6_nj = String(row[j+2] || '－').trim();
-        // 漣水
-        if (j >= 12 && result.cap6_ls === '－') result.cap6_ls = String(row[j+2] || '－').trim();
-      }
-    }
-  }
 
-  // WIP
-  for (let i = 0; i < Math.min(cap.length, 20); i++) {
-    const row = cap[i];
-    const rowStr = row.join('\t');
-    if (rowStr.includes('未完工') || rowStr.includes('在製')) {
-      const nums = row.filter(v => typeof v === 'number' && v > 0 && v < 500);
-      if (nums.length >= 3) {
-        result.wip_tw = String(nums[0]);
-        result.wip_nj = String(nums[1]);
-        result.wip_ls = String(nums[2]);
-      }
-      break;
-    }
-  }
-
-  // 週產能追蹤
+  // 掃描所有行
+  let foundWip = false, foundLastDone = false, foundThisPlan = false;
   for (let i = 0; i < cap.length; i++) {
     const row = cap[i];
-    const rowStr = row.join('\t');
-    if (rowStr.includes('上週完工')) {
-      // 找日期標籤
-      const dateMatch = rowStr.match(/(\d+\/W\d+[：:][^\t]+)/);
-      if (dateMatch) result.weekLabel_last = dateMatch[1];
-      // 找數字
-      const nums = row.filter(v => typeof v === 'number' && v > 0 && v < 500);
-      if (nums.length >= 3) {
-        result.last_done_tw = String(nums[0]);
-        result.last_done_nj = String(nums[1]);
-        result.last_done_ls = String(nums[2]);
-      }
+    if (!row || row.length === 0) continue;
+    const r0 = String(row[0] || '');
+
+    // 6月投產：row結構 [TW/6月投產, _, 數字, 產能, _, _, NJ/6月投产, _, 數字, ...]
+    if (r0.includes('6月投')) {
+      if (typeof row[2] === 'number' && result.cap6_tw === '－') result.cap6_tw = String(row[2]);
+      if (typeof row[8] === 'number' && result.cap6_nj === '－') result.cap6_nj = String(row[8]);
+      if (typeof row[14] === 'number' && result.cap6_ls === '－') result.cap6_ls = String(row[14]);
     }
-    if (rowStr.includes('本週完工計畫') || rowStr.includes('本週完工')) {
-      const dateMatch = rowStr.match(/(\d+\/W\d+[：:][^\t]+)/);
-      if (dateMatch) result.weekLabel_this = dateMatch[1];
-      const nums = row.filter(v => typeof v === 'number' && v > 0 && v < 500);
-      if (nums.length >= 3) {
-        result.this_plan_tw = String(nums[0]);
-        result.this_plan_nj = String(nums[1]);
-        result.this_plan_ls = String(nums[2]);
-      }
+
+    // WIP：找「二、未完工在製品」後的TW行（col4有數字）
+    if (r0.includes('未完工')) { foundWip = true; continue; }
+    if (foundWip && r0 === 'TW' && typeof row[4] === 'number' && row[4] > 0) {
+      result.wip_tw = String(row[4]);
+      if (typeof row[10] === 'number') result.wip_nj = String(row[10]);
+      if (typeof row[16] === 'number') result.wip_ls = String(row[16]);
+      foundWip = false;
+    }
+
+    // 上週完工標題行
+    if (r0.includes('上週完工') || r0.includes('4-2上')) {
+      foundLastDone = true;
+      const m = r0.match(/[（(]([^）)]+)[）)]/);
+      if (m) result.weekLabel_last = m[1];
+      continue;
+    }
+    // 上週完工數字行（TW行，col2有數字，col3含達成率）
+    if (foundLastDone && r0 === 'TW' && typeof row[2] === 'number') {
+      result.last_done_tw = String(row[2]);
+      if (typeof row[8] === 'number') result.last_done_nj = String(row[8]);
+      if (typeof row[14] === 'number') result.last_done_ls = String(row[14]);
+      foundLastDone = false;
+    }
+
+    // 本週完工計畫標題行
+    if (r0.includes('本週完工') || r0.includes('4-3本')) {
+      foundThisPlan = true;
+      const m = r0.match(/[（(]([^）)]+)[）)]/);
+      if (m) result.weekLabel_this = m[1];
+      continue;
+    }
+    // 本週完工計畫數字行
+    if (foundThisPlan && r0 === 'TW' && typeof row[2] === 'number') {
+      result.this_plan_tw = String(row[2]);
+      if (typeof row[8] === 'number') result.this_plan_nj = String(row[8]);
+      if (typeof row[14] === 'number') result.this_plan_ls = String(row[14]);
+      foundThisPlan = false;
     }
   }
 
@@ -742,39 +737,34 @@ function extractNumbers(excelData) {
   const july = excelData.julyPlan || [];
   for (let i = 0; i < Math.min(july.length, 5); i++) {
     const row = july[i];
-    for (let j = 0; j < row.length; j++) {
-      const v = String(row[j]);
-      if (v.includes('7月投') || v.includes('7月投產')) {
-        if (j < 7 && result.cap7_tw === '－') result.cap7_tw = String(row[j+2] || '－').trim();
-        if (j >= 7 && j < 14 && result.cap7_nj === '－') result.cap7_nj = String(row[j+2] || '－').trim();
-        if (j >= 14 && result.cap7_ls === '－') result.cap7_ls = String(row[j+2] || '－').trim();
-      }
+    if (!row) continue;
+    const r0 = String(row[0] || '');
+    if (r0.includes('7月投')) {
+      if (typeof row[2] === 'number' && result.cap7_tw === '－') result.cap7_tw = String(row[2]);
+      if (typeof row[9] === 'number' && result.cap7_nj === '－') result.cap7_nj = String(row[9]);
+      if (typeof row[16] === 'number' && result.cap7_ls === '－') result.cap7_ls = String(row[16]);
     }
   }
 
-  // 庫存機
+  // 庫存機：TW後第2行 row[0]=總數, row[1]=有客戶數
   const inv = excelData.inventory || [];
-  let section = '';
+  let curSection = '';
   for (let i = 0; i < inv.length; i++) {
     const row = inv[i];
-    const rowStr = row.join('\t');
-    if (rowStr.includes('\nTW') || row[0] === 'TW') section = 'TW';
-    if (rowStr.includes('\nNJ') || row[0] === 'NJ') section = 'NJ';
-    if (rowStr.includes('\nLS') || row[0] === 'LS') section = 'LS';
-    if (row[0] === '總計' || rowStr.startsWith('總計')) {
-      const nums = row.filter(v => typeof v === 'number' && v > 0);
-      if (section === 'TW' && nums.length >= 2) {
-        result.inv_tw_total = String(nums[0]);
-        result.inv_tw_has = String(nums[1]);
-        result.inv_tw_no = String(nums[0] - nums[1]);
-      } else if (section === 'NJ' && nums.length >= 2) {
-        result.inv_nj_total = String(nums[0]);
-        result.inv_nj_has = String(nums[1]);
-        result.inv_nj_no = String(nums[0] - nums[1]);
-      } else if (section === 'LS' && nums.length >= 2) {
-        result.inv_ls_total = String(nums[0]);
-        result.inv_ls_has = String(nums[1]);
-        result.inv_ls_no = String(nums[0] - nums[1]);
+    if (!row) continue;
+    const r0 = String(row[0] || '');
+    if (r0 === 'TW') { curSection = 'TW'; continue; }
+    if (r0 === 'NJ') { curSection = 'NJ'; continue; }
+    if (r0 === 'LS') { curSection = 'LS'; continue; }
+    if (r0 === '總計') continue; // 跳過表頭
+    if (curSection && typeof row[0] === 'number' && row[0] > 5 && typeof row[1] === 'number') {
+      const total = row[0], has = row[1], no = total - has;
+      if (curSection === 'TW' && result.inv_tw_total === '－') {
+        result.inv_tw_total = String(total); result.inv_tw_has = String(has); result.inv_tw_no = String(no); curSection = '';
+      } else if (curSection === 'NJ' && result.inv_nj_total === '－') {
+        result.inv_nj_total = String(total); result.inv_nj_has = String(has); result.inv_nj_no = String(no); curSection = '';
+      } else if (curSection === 'LS' && result.inv_ls_total === '－') {
+        result.inv_ls_total = String(total); result.inv_ls_has = String(has); result.inv_ls_no = String(no); curSection = '';
       }
     }
   }
