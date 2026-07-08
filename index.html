@@ -377,8 +377,8 @@
       <div class="progress-title">處理中，請稍候…</div>
       <div class="progress-steps">
         <div class="progress-step" id="step_upload"><span class="icon">⏳</span> 上傳影片至 Gemini</div>
-        <div class="progress-step" id="step_analyze"><span class="icon">⏳</span> AI 分析會議影片內容</div>
         <div class="progress-step" id="step_excel"><span class="icon">⏳</span> 讀取 Excel 報告資料</div>
+        <div class="progress-step" id="step_analyze"><span class="icon">⏳</span> AI 分析會議影片內容</div>
         <div class="progress-step" id="step_prevdocx"><span class="icon">⏳</span> 讀取上週會議記錄</div>
         <div class="progress-step" id="step_word"><span class="icon">⏳</span> 產生 Word 會議記錄</div>
       </div>
@@ -502,15 +502,27 @@ async function startGenerate() {
     const videoUri = await uploadVideoToGemini(files.mp4);
     setStep('step_upload', 'done');
 
-    // Step 2: Gemini 分析影片
-    setStep('step_analyze', 'active');
-    const transcript = await analyzeVideo(videoUri);
-    setStep('step_analyze', 'done');
-
-    // Step 3: 讀Excel
+    // Step 1.5: 讀 Excel（提前到影片分析前，因為要把客戶/機型清單當作參考詞彙表給 Gemini）
     setStep('step_excel', 'active');
     const excelData = await readExcel(files.xlsx);
     setStep('step_excel', 'done');
+    const glossary = extractCustomerAndModelList(excelData);
+
+    // Step 2: Gemini 分析影片(這步最花時間，加上經過秒數顯示，避免看起來像卡住)
+    setStep('step_analyze', 'active');
+    const analyzeLabel = document.querySelector('#step_analyze');
+    const analyzeStart = Date.now();
+    const analyzeTimer = setInterval(() => {
+      const secs = Math.floor((Date.now() - analyzeStart) / 1000);
+      analyzeLabel.lastChild.textContent = ` AI 分析會議影片內容（已等待 ${secs} 秒，影片較長時可能需要數分鐘）`;
+    }, 1000);
+    let transcript;
+    try {
+      transcript = await analyzeVideo(videoUri, glossary);
+    } finally {
+      clearInterval(analyzeTimer);
+    }
+    setStep('step_analyze', 'done');
 
     // Step 3.5: 讀取上週會議記錄(取得第1、2、8、11項等沒有新資料來源的項目內容)
     setStep('step_prevdocx', 'active');
@@ -590,37 +602,92 @@ async function uploadVideoToGemini(file) {
   return fileUri;
 }
 
+// 偵測並精簡「AI跳針」造成的異常重複內容(例如同一句話連續重複幾十次)
+function collapseRepetition(text) {
+  if (!text) return text;
+  const regex = /(.{1,30}?)\1{7,}/gsu;
+  return text.replace(regex, (match, unit) => `${unit}（此處偵測到AI異常重複輸出，已自動精簡，請人工核對影片原意）`);
+}
+
 // ── Gemini 分析影片 ──
-async function analyzeVideo(videoUri) {
+async function analyzeVideo(videoUri, glossary) {
+  glossary = glossary || { customers: [], models: [] };
+  const glossaryBlock = (glossary.customers.length || glossary.models.length)
+    ? `\n\n為了提升專有名詞辨識準確度，以下是本次會議可能會提到的客戶名稱與機型代號清單，如果聽到發音相近的詞，請優先比對這份清單來判斷正確寫法；如果清單裡真的找不到對應的，就照聽到的實際發音寫出來即可，不要硬套清單裡的詞：\n【客戶名稱清單】\n${glossary.customers.join('、')}\n【機型代號清單】\n${glossary.models.join('、')}`
+    : '';
+
   const prompt = `這是一個產銷會議錄影。請完成以下兩個任務：
 
 1. 找出會議中主席詢問「南京有事情要討論嗎」或「漣水有事情要討論嗎」或「台灣有事情要討論嗎」之後的討論內容，這段是"其他事項"。請逐字轉錄台灣、南京、漣水各廠的發言內容，盡量完整，包含對照畫面討論的細節。
 
-2. 如果有提到物料管理相關的數字（如主軸在庫數量、控制器數量等），請一併記錄。
+2. 如果有提到物料管理相關的數字（如主軸在庫數量、控制器數量等），請一併記錄。${glossaryBlock}
 
 請用以下 JSON 格式回覆，只回覆 JSON：
 {"taiwan_other":"台灣廠其他事項逐字內容","nanjing_other":"南京廠其他事項逐字內容","lianshui_other":"漣水廠其他事項逐字內容","material_notes":"物料管理相關內容（如無則填空字串）","meeting_date_hint":"影片中提到的日期或週別（如有）"}`;
 
-  const resp = await fetch(
-    `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${GEMINI_API_KEY}`,
-    {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        contents: [{ parts: [{ text: prompt }, { file_data: { mime_type: 'video/mp4', file_uri: videoUri } }] }],
-        generationConfig: { temperature: 0.1 }
-      })
+  // 逾時保護:最多等 6 分鐘，避免 Gemini 那邊卡住時前端無限期空轉、沒有任何錯誤訊息
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), 6 * 60 * 1000);
+
+  let resp;
+  try {
+    resp = await fetch(
+      `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${GEMINI_API_KEY}`,
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          contents: [{ parts: [{ text: prompt }, { file_data: { mime_type: 'video/mp4', file_uri: videoUri } }] }],
+          generationConfig: {
+            temperature: 0.1,
+            maxOutputTokens: 65535,           // 預設只有 8192，長會議逐字稿很容易超過導致回覆被截斷
+            thinkingConfig: { thinkingBudget: 0 }, // 關閉思考模式：這是單純轉錄任務不需要，且思考也會佔用輸出額度、拖慢速度
+            frequencyPenalty: 0.4,             // 降低 AI 卡在「跳針」重複同一句話的機率
+            presencePenalty: 0.4
+          }
+        }),
+        signal: controller.signal
+      }
+    );
+  } catch (err) {
+    if (err.name === 'AbortError') {
+      throw new Error('AI 分析影片超過 6 分鐘沒有回應，可能是影片太長或網路不穩，請稍後再試一次；如果影片本身很長（超過30分鐘），建議先剪短再上傳。');
     }
-  );
+    throw err;
+  } finally {
+    clearTimeout(timeoutId);
+  }
+
   if (!resp.ok) throw new Error('Gemini 分析失敗：' + await resp.text());
   const data = await resp.json();
+
+  const finishReason = data.candidates?.[0]?.finishReason;
   const text = data.candidates?.[0]?.content?.parts?.[0]?.text || '';
 
+  function cleanParsed(obj) {
+    ['taiwan_other', 'nanjing_other', 'lianshui_other', 'material_notes'].forEach(k => {
+      if (obj[k]) obj[k] = collapseRepetition(obj[k]);
+    });
+    return obj;
+  }
+
+  // 先試著直接解析
   try {
     const clean = text.replace(/```json|```/g, '').trim();
-    return JSON.parse(clean);
+    return cleanParsed(JSON.parse(clean));
   } catch {
-    return { taiwan_other: text, nanjing_other: '', lianshui_other: '', material_notes: '', meeting_date_hint: '' };
+    // 直接解析失敗，嘗試從文字中擷取看起來像完整 JSON 物件的部分再解析一次
+    const match = text.match(/\{[\s\S]*\}/);
+    if (match) {
+      try {
+        return cleanParsed(JSON.parse(match[0]));
+      } catch { /* 還是失敗，往下丟出錯誤 */ }
+    }
+    // 回覆真的無法解析：不要把原始亂碼塞進 Word 檔，直接跳出明確錯誤，請使用者重新產生
+    const reasonNote = finishReason === 'MAX_TOKENS'
+      ? '（AI 回覆在完成前就被截斷，可能是影片內容導致 AI 輸出異常冗長）'
+      : '';
+    throw new Error(`AI 回覆的格式異常，無法解析成會議記錄內容${reasonNote}，請重新產生一次；如持續發生，請嘗試將影片剪短後再試。`);
   }
 }
 
@@ -848,6 +915,46 @@ function extractReductionTotal(excelData) {
   }
   if (nums.length === 0) return null;
   return { thisWeek: nums[0], lastWeek: nums.length > 1 ? nums[1] : null };
+}
+
+// ── 從「投產計畫表」抓「客戶」「機型」清單，當作 Gemini 辨識時的參考詞彙表 ──
+// 該分頁是台灣/南京/漣水三廠並排的表格，每個廠各有自己的「客戶」「機型」欄位
+function extractCustomerAndModelList(excelData) {
+  const rows = excelData.julyPlan || [];
+  const customers = new Set();
+  const models = new Set();
+  const custCols = [];
+  const modelCols = [];
+
+  for (let r = 0; r < Math.min(rows.length, 6); r++) {
+    const row = rows[r] || [];
+    row.forEach((cell, c) => {
+      const v = String(cell == null ? '' : cell).trim();
+      if (v === '客戶' || v === '客户') custCols.push({ col: c, row: r });
+      if (v === '機型' || v === '机型') modelCols.push({ col: c, row: r });
+    });
+  }
+
+  custCols.forEach(cc => {
+    let modelCol = null, minDist = Infinity;
+    modelCols.forEach(mc => {
+      const dist = mc.col - cc.col;
+      if (dist > 0 && dist < minDist) { minDist = dist; modelCol = mc.col; }
+    });
+    if (modelCol == null) return;
+    for (let r = cc.row + 1; r < rows.length; r++) {
+      const custVal = String((rows[r] || [])[cc.col] == null ? '' : (rows[r] || [])[cc.col]).trim();
+      const modelVal = String((rows[r] || [])[modelCol] == null ? '' : (rows[r] || [])[modelCol]).trim();
+      if (custVal && custVal.length < 30) customers.add(custVal);
+      if (modelVal && modelVal.length < 20) models.add(modelVal);
+    }
+  });
+
+  const noise = ['客戶', '客户', '機型', '机型', '回廠模組機', '回板模組機', '预备机', '預備機', '尚未提供備機單or訂單', '尚未提供备机单or订单', '暫不投產:', '暂不投产:'];
+  return {
+    customers: Array.from(customers).filter(v => !noise.includes(v)),
+    models: Array.from(models).filter(v => !noise.includes(v))
+  };
 }
 
 // ── 計算本週日期 ──
