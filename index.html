@@ -622,7 +622,7 @@ async function analyzeVideo(videoUri, glossary) {
 
 2. 如果有提到物料管理相關的數字（如主軸在庫數量、控制器數量等），請一併記錄。${glossaryBlock}
 
-請用以下 JSON 格式回覆，只回覆 JSON：
+請用以下 JSON 格式回覆，只回覆 JSON，不要有任何重複贅述、不要重複輸出同一句話：
 {"taiwan_other":"台灣廠其他事項逐字內容","nanjing_other":"南京廠其他事項逐字內容","lianshui_other":"漣水廠其他事項逐字內容","material_notes":"物料管理相關內容（如無則填空字串）","meeting_date_hint":"影片中提到的日期或週別（如有）"}`;
 
   // 逾時保護:最多等 6 分鐘，避免 Gemini 那邊卡住時前端無限期空轉、沒有任何錯誤訊息
@@ -641,9 +641,7 @@ async function analyzeVideo(videoUri, glossary) {
           generationConfig: {
             temperature: 0.1,
             maxOutputTokens: 65535,           // 預設只有 8192，長會議逐字稿很容易超過導致回覆被截斷
-            thinkingConfig: { thinkingBudget: 0 }, // 關閉思考模式：這是單純轉錄任務不需要，且思考也會佔用輸出額度、拖慢速度
-            frequencyPenalty: 0.4,             // 降低 AI 卡在「跳針」重複同一句話的機率
-            presencePenalty: 0.4
+            thinkingConfig: { thinkingBudget: 0 } // 關閉思考模式：這是單純轉錄任務不需要，且思考也會佔用輸出額度、拖慢速度
           }
         }),
         signal: controller.signal
