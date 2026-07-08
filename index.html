@@ -4,7 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>大量科技｜產銷會議記錄產生器</title>
-<!-- BUILD VERSION: 2026-07-08-v7 (逾時拉長至20分鐘) -->
+<!-- BUILD VERSION: 2026-07-08-v8 (503自動重試機制，逾時20分鐘) -->
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
 <script src="https://unpkg.com/docx@8.5.0/build/index.umd.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/mammoth/1.6.0/mammoth.browser.min.js"></script>
@@ -627,30 +627,51 @@ async function analyzeVideo(videoUri, glossary) {
 {"taiwan_other":"台灣廠其他事項逐字內容","nanjing_other":"南京廠其他事項逐字內容","lianshui_other":"漣水廠其他事項逐字內容","material_notes":"物料管理相關內容（如無則填空字串）","meeting_date_hint":"影片中提到的日期或週別（如有）"}`;
 
   // 逾時保護:最多等 20 分鐘(這把 API Key 不支援關閉思考模式，加上影片將近50分鐘，實際處理時間可能超過15分鐘)
-  const controller = new AbortController();
-  const timeoutId = setTimeout(() => controller.abort(), 20 * 60 * 1000);
+  async function callGemini() {
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 20 * 60 * 1000);
+    try {
+      return await fetch(
+        `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${GEMINI_API_KEY}`,
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            contents: [{ parts: [{ text: prompt }, { file_data: { mime_type: 'video/mp4', file_uri: videoUri } }] }],
+            generationConfig: { temperature: 0.1 }
+          }),
+          signal: controller.signal
+        }
+      );
+    } finally {
+      clearTimeout(timeoutId);
+    }
+  }
 
   let resp;
-  try {
-    resp = await fetch(
-      `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${GEMINI_API_KEY}`,
-      {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          contents: [{ parts: [{ text: prompt }, { file_data: { mime_type: 'video/mp4', file_uri: videoUri } }] }],
-          generationConfig: { temperature: 0.1 }
-        }),
-        signal: controller.signal
+  const maxRetries = 3;
+  for (let attempt = 1; attempt <= maxRetries; attempt++) {
+    try {
+      resp = await callGemini();
+    } catch (err) {
+      if (err.name === 'AbortError') {
+        throw new Error('AI 分析影片超過 20 分鐘沒有回應，可能是影片太長或網路不穩，請稍後再試一次；如果影片本身很長（超過30分鐘），建議先剪短再上傳。');
       }
-    );
-  } catch (err) {
-    if (err.name === 'AbortError') {
-      throw new Error('AI 分析影片超過 20 分鐘沒有回應，可能是影片太長或網路不穩，請稍後再試一次；如果影片本身很長（超過30分鐘），建議先剪短再上傳。');
+      throw err;
     }
-    throw err;
-  } finally {
-    clearTimeout(timeoutId);
+    // 503 是 Google 那邊伺服器暫時過載，屬於暫時性問題，自動等待後重試
+    if (resp.status === 503 && attempt < maxRetries) {
+      const waitSec = attempt * 20;
+      analyzeLabelForRetry(`AI 服務目前忙碌中，${waitSec} 秒後自動重試（第 ${attempt}/${maxRetries - 1} 次）...`);
+      await new Promise(r => setTimeout(r, waitSec * 1000));
+      continue;
+    }
+    break;
+  }
+
+  function analyzeLabelForRetry(msg) {
+    const el = document.querySelector('#step_analyze');
+    if (el && el.lastChild) el.lastChild.textContent = ' ' + msg;
   }
 
   if (!resp.ok) throw new Error('Gemini 分析失敗：' + await resp.text());
