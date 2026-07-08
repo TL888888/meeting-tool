@@ -4,7 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>大量科技｜產銷會議記錄產生器</title>
-<!-- BUILD VERSION: 2026-07-08-v4 (移除 penalty 參數 / 關閉思考模式 / 客戶機型詞彙表 / 上週記錄讀取) -->
+<!-- BUILD VERSION: 2026-07-08-v5 (Gemini generationConfig 還原成原始最簡版本，只留 temperature，移除 thinkingConfig/maxOutputTokens，其餘修正保留：無 penalty 參數、客戶機型詞彙表、上週記錄讀取、逾時保護、重複偵測安全網) -->
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
 <script src="https://unpkg.com/docx@8.5.0/build/index.umd.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/mammoth/1.6.0/mammoth.browser.min.js"></script>
@@ -639,11 +639,7 @@ async function analyzeVideo(videoUri, glossary) {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           contents: [{ parts: [{ text: prompt }, { file_data: { mime_type: 'video/mp4', file_uri: videoUri } }] }],
-          generationConfig: {
-            temperature: 0.1,
-            maxOutputTokens: 65535,           // 預設只有 8192，長會議逐字稿很容易超過導致回覆被截斷
-            thinkingConfig: { thinkingBudget: 0 } // 關閉思考模式：這是單純轉錄任務不需要，且思考也會佔用輸出額度、拖慢速度
-          }
+          generationConfig: { temperature: 0.1 }
         }),
         signal: controller.signal
       }
@@ -1164,3 +1160,4 @@ function downloadDocx() {
 </script>
 </body>
 </html>
+
