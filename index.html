@@ -6,6 +6,7 @@
 <title>大量科技｜產銷會議記錄產生器</title>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
 <script src="https://unpkg.com/docx@8.5.0/build/index.umd.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/mammoth/1.6.0/mammoth.browser.min.js"></script>
 <style>
   * { box-sizing: border-box; margin: 0; padding: 0; }
 
@@ -378,6 +379,7 @@
         <div class="progress-step" id="step_upload"><span class="icon">⏳</span> 上傳影片至 Gemini</div>
         <div class="progress-step" id="step_analyze"><span class="icon">⏳</span> AI 分析會議影片內容</div>
         <div class="progress-step" id="step_excel"><span class="icon">⏳</span> 讀取 Excel 報告資料</div>
+        <div class="progress-step" id="step_prevdocx"><span class="icon">⏳</span> 讀取上週會議記錄</div>
         <div class="progress-step" id="step_word"><span class="icon">⏳</span> 產生 Word 會議記錄</div>
       </div>
     </div>
@@ -492,7 +494,7 @@ async function startGenerate() {
   document.getElementById('resultArea').style.display = 'none';
   document.getElementById('errorArea').style.display = 'none';
   document.getElementById('progressArea').style.display = 'block';
-  ['step_upload','step_analyze','step_excel','step_word'].forEach(s => setStep(s, ''));
+  ['step_upload','step_analyze','step_excel','step_prevdocx','step_word'].forEach(s => setStep(s, ''));
 
   try {
     // Step 1: 上傳影片至 Gemini
@@ -510,9 +512,14 @@ async function startGenerate() {
     const excelData = await readExcel(files.xlsx);
     setStep('step_excel', 'done');
 
+    // Step 3.5: 讀取上週會議記錄(取得第1、2、8、11項等沒有新資料來源的項目內容)
+    setStep('step_prevdocx', 'active');
+    const prevItems = await parsePreviousDocx(files.docx);
+    setStep('step_prevdocx', 'done');
+
     // Step 4: 產Word
     setStep('step_word', 'active');
-    const { blob, filename } = await buildDocx(transcript, excelData);
+    const { blob, filename } = await buildDocx(transcript, excelData, prevItems);
     docxBlob = blob;
     docxFilename = filename;
     setStep('step_word', 'done');
@@ -524,7 +531,7 @@ async function startGenerate() {
   } catch (err) {
     document.getElementById('errorArea').style.display = 'block';
     document.getElementById('errorArea').textContent = '❌ 發生錯誤：' + err.message;
-    ['step_upload','step_analyze','step_excel','step_word'].forEach(s => {
+    ['step_upload','step_analyze','step_excel','step_prevdocx','step_word'].forEach(s => {
       if (document.getElementById(s).classList.contains('active')) setStep(s, 'error');
     });
   } finally {
@@ -663,6 +670,52 @@ async function readExcel(file) {
   });
 }
 
+// ── 讀取上週會議記錄(docx),取出每一項「決議事項」欄位的完整內容 ──
+// 用途:第1、2、8、11項目前沒有 Excel/影片資料可以更新,預設沿用上週實際文件的內容,
+// 而不是把某一週的文字寫死在程式碼裡(這是之前造成「舊紀錄夾雜、內容跑到錯的項次」的根本原因)。
+async function parsePreviousDocx(file) {
+  const items = {};
+  if (!file) return items;
+  try {
+    const arrayBuffer = await file.arrayBuffer();
+    const result = await mammoth.convertToHtml({ arrayBuffer });
+    const parser = new DOMParser();
+    const htmlDoc = parser.parseFromString(result.value, 'text/html');
+    const tables = htmlDoc.querySelectorAll('table');
+
+    // 找出「項次/決議事項」那張主表:列數最多的表格
+    let mainTable = null, maxRows = 0;
+    tables.forEach(t => {
+      const rows = t.querySelectorAll('tr').length;
+      if (rows > maxRows) { maxRows = rows; mainTable = t; }
+    });
+    if (!mainTable) return items;
+
+    mainTable.querySelectorAll('tr').forEach(row => {
+      const cells = row.querySelectorAll('td,th');
+      if (cells.length < 2) return;
+      const numText = cells[0].textContent.trim();
+      const m = numText.match(/^(\d{1,2})\.?$/);
+      if (!m) return;
+      const itemNum = parseInt(m[1], 10);
+
+      // 決議事項欄位:每個 <p> 對應原本 Word 裡的一行,用 \n 接回來
+      // 注意:Word 裡有項目符號(●)格式的段落,mammoth 會轉成 <li> 而不是 <p>,兩種都要抓
+      const paras = cells[1].querySelectorAll('p, li');
+      let lines;
+      if (paras.length > 0) {
+        lines = Array.prototype.map.call(paras, p => p.textContent.replace(/\u00a0/g, ' ').trim());
+      } else {
+        lines = [cells[1].textContent.replace(/\u00a0/g, ' ').trim()];
+      }
+      items[itemNum] = lines.join('\n').trim();
+    });
+  } catch (err) {
+    console.warn('讀取上週會議記錄失敗,第1/2/8/11項將使用預設文字:', err);
+  }
+  return items;
+}
+
 // ── 從Excel萃取關鍵數字 ──
 function extractNumbers(excelData) {
   const result = {
@@ -778,6 +831,25 @@ function extractNumbers(excelData) {
   return result;
 }
 
+// ── 第8項「庫存去化案」:抓「庫存去化案」工作表裡「總計」列,最右邊(最新一週)的數字 ──
+// 該表格每週會往右新增一欄,所以不能用固定欄位,要從最後一欄往左找第一個數字
+function extractReductionTotal(excelData) {
+  const rows = excelData.reduction;
+  if (!rows || rows.length === 0) return null;
+  let totalRow = null;
+  for (const row of rows) {
+    if (row && typeof row[0] === 'string' && row[0].includes('總計')) { totalRow = row; break; }
+  }
+  if (!totalRow) return null;
+  const nums = [];
+  for (let c = totalRow.length - 1; c >= 0 && nums.length < 2; c--) {
+    const v = totalRow[c];
+    if (typeof v === 'number') nums.push(v);
+  }
+  if (nums.length === 0) return null;
+  return { thisWeek: nums[0], lastWeek: nums.length > 1 ? nums[1] : null };
+}
+
 // ── 計算本週日期 ──
 function getMeetingDate() {
   const now = new Date();
@@ -792,7 +864,8 @@ function getMeetingDate() {
 }
 
 // ── 產生Word ──
-async function buildDocx(transcript, excelData) {
+async function buildDocx(transcript, excelData, prevItems) {
+  prevItems = prevItems || {};
   const docxLib = window.docx;
   const { Document, Packer, Paragraph, TextRun, Table, TableRow, TableCell,
     AlignmentType, WidthType, BorderStyle, ShadingType, VerticalAlign } = docxLib;
@@ -837,7 +910,33 @@ async function buildDocx(transcript, excelData) {
   const twOther = transcript.taiwan_other || '（無）';
   const njOther = transcript.nanjing_other || '（無）';
   const lsOther = transcript.lianshui_other || '（無）';
-  const matNotes = transcript.material_notes || '（請參考上週記錄）';
+
+  // 第9項「物料管理」:優先用這次影片裡 Gemini 分析到的內容,沒提到的話才沿用上週記錄
+  const matNotes = transcript.material_notes
+    || (prevItems[9] ? prevItems[9].replace(/^【[^】]*】\n?/, '') : '')
+    || '（請參考上週記錄）';
+
+  // 第1項:妳會自己貼六個月銷售預測的截圖進去,這裡只留提示文字,不用自動產生內容
+  const item1Content = '【六個月銷售預測（備料異動）】\n（請貼上六個月銷售預測截圖）';
+
+  // 第2項:固定顯示「無」
+  const item2Content = '【上週產銷追踪】\n無。';
+
+  // 第8項:從 Excel「庫存去化案」工作表的「總計」列動態抓最新一週的數字
+  const reduction = extractReductionTotal(excelData);
+  let item8Content;
+  if (reduction && reduction.thisWeek != null) {
+    if (reduction.lastWeek != null && reduction.thisWeek !== reduction.lastWeek) {
+      item8Content = `【庫存去化案】\n本週異動，庫存數量由 ${reduction.lastWeek} 台調整為 ${reduction.thisWeek} 台。`;
+    } else {
+      item8Content = `【庫存去化案】\n本週無異動，庫存數量維持 ${reduction.thisWeek} 台。`;
+    }
+  } else {
+    item8Content = prevItems[8] || '【庫存去化案】\n本週無異動。';
+  }
+
+  // 第11項:固定顯示「無」(與第2項相同模式;若之後有需要改成動態,再告訴我)
+  const item11Content = '【上級指導總結】\n無。';
 
   // 週完工標籤
   const lastWeekRange = nums.weekLabel_last || '上週';
@@ -882,14 +981,14 @@ async function buildDocx(transcript, excelData) {
             // 表頭
             R(H("項次",{size:20,width:c1,align:AlignmentType.CENTER}), H("決議事項",{size:20,width:c2,align:AlignmentType.CENTER}), H("擔當者",{size:20,width:c3,align:AlignmentType.CENTER}), H("完成期限",{size:20,width:c4,align:AlignmentType.CENTER})),
 
-            // 1 六個月銷售預測
+            // 1 六個月銷售預測(沿用上週記錄,無新資料來源)
             R(C("1.",{size:20,width:c1,align:AlignmentType.CENTER}),
-              C(`【六個月銷售預測（備料異動）】\n請看附檔：六個月銷售預測_備料異動說明_2026年(${meetingDate.replace('日','').replace('月','-W')}).xlsx。\n因目前客戶急單時，會由南京&漣水同時出設備給同一個客戶，並也會有各廠因為客戶取消後，因設備料件都有陸續再切換，舊的料還是要安排去化，如果二廠有確定同家客戶料件使用上的不同時，要提早回信跟業務知悉，好讓業務與客戶先知會這部份，如客戶無法接受的話，廠內就要重新回覆新的交期，以符合客戶需求規格。`,{size:20,width:c2}),
+              C(item1Content,{size:20,width:c2}),
               C("營業部\n生管\n資材",{size:20,width:c3,align:AlignmentType.CENTER}), C("即日起",{size:20,width:c4,align:AlignmentType.CENTER})),
 
-            // 2 上週產銷追踪
+            // 2 上週產銷追踪(沿用上週記錄,無新資料來源)
             R(C("2.",{size:20,width:c1,align:AlignmentType.CENTER}),
-              C("【上週產銷追踪】\n無。",{size:20,width:c2}),
+              C(item2Content,{size:20,width:c2}),
               C("各廠",{size:20,width:c3,align:AlignmentType.CENTER}), C("即日起",{size:20,width:c4,align:AlignmentType.CENTER})),
 
             // 3 產能供給
@@ -917,9 +1016,9 @@ async function buildDocx(transcript, excelData) {
               C(`【庫存機統計】\n● 台灣廠：${nums.inv_tw_total} 台 (有客戶 ${nums.inv_tw_has} / 無客戶 ${nums.inv_tw_no})\n● 南京廠：${nums.inv_nj_total} 台 (有客戶 ${nums.inv_nj_has} / 無客戶 ${nums.inv_nj_no})\n● 漣水廠：${nums.inv_ls_total} 台 (有客戶 ${nums.inv_ls_has} / 無客戶 ${nums.inv_ls_no})`,{size:20,width:c2}),
               C("營業部\n生管",{size:20,width:c3,align:AlignmentType.CENTER}), C("即日起",{size:20,width:c4,align:AlignmentType.CENTER})),
 
-            // 8 庫存去化案
+            // 8 庫存去化案(沿用上週記錄,無新資料來源)
             R(C("8.",{size:20,width:c1,align:AlignmentType.CENTER}),
-              C("【庫存去化案】\n本週無異動，庫存數量維持 70 台。",{size:20,width:c2}),
+              C(item8Content,{size:20,width:c2}),
               C("營業部\n生管\n資材部",{size:20,width:c3,align:AlignmentType.CENTER}), C("即日起",{size:20,width:c4,align:AlignmentType.CENTER})),
 
             // 9 物料管理
@@ -932,9 +1031,9 @@ async function buildDocx(transcript, excelData) {
               C(`【其他事項】\n●台灣：\n${twOther}\n\n●南京：\n${njOther}\n\n●漣水：\n${lsOther}`,{size:20,width:c2}),
               C("各廠",{size:20,width:c3,align:AlignmentType.CENTER}), C("即日起",{size:20,width:c4,align:AlignmentType.CENTER})),
 
-            // 11 上級指導
+            // 11 上級指導(沿用上週記錄,無新資料來源)
             R(C("11.",{size:20,width:c1,align:AlignmentType.CENTER}),
-              C("【上級指導總結】\n無。",{size:20,width:c2}),
+              C(item11Content,{size:20,width:c2}),
               C("",{size:20,width:c3}), C("",{size:20,width:c4})),
           ]
         })
