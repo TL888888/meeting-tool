@@ -4,7 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>大量科技｜產銷會議記錄產生器</title>
-<!-- BUILD VERSION: 2026-07-09-v10 (新增可選的影片2上傳，用於較長會議分兩段處理) -->
+<!-- BUILD VERSION: 2026-07-08-v9-ROLLBACK (已驗證穩定：短影片15-26分鐘成功。此版無雙影片功能) -->
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
 <script src="https://unpkg.com/docx@8.5.0/build/index.umd.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/mammoth/1.6.0/mammoth.browser.min.js"></script>
@@ -20,7 +20,6 @@
     justify-content: center;
   }
 
-  /* ── 登入畫面 ── */
   #loginScreen {
     background: white;
     border-radius: 16px;
@@ -81,7 +80,6 @@
     min-height: 18px;
   }
 
-  /* ── 主畫面 ── */
   #mainScreen {
     display: none;
     width: 100%;
@@ -135,7 +133,6 @@
     margin-bottom: 32px;
   }
 
-  /* ── 步驟卡片 ── */
   .step-card {
     background: white;
     border-radius: 12px;
@@ -163,7 +160,6 @@
   .step-title { font-size: 16px; font-weight: 700; color: #1a1a2e; }
   .step-hint { font-size: 12px; color: #94a3b8; margin-left: auto; }
 
-  /* ── 拖曳區 ── */
   .drop-zone {
     border: 2px dashed #cbd5e1;
     border-radius: 10px;
@@ -205,18 +201,13 @@
   }
   .file-badge .remove:hover { color: #ef4444; }
 
-  /* ── 三欄拖曳 ── */
   .drop-grid {
     display: grid;
-    grid-template-columns: repeat(4, 1fr);
+    grid-template-columns: 1fr 1fr 1fr;
     gap: 14px;
-  }
-  @media (max-width: 720px) {
-    .drop-grid { grid-template-columns: 1fr 1fr; }
   }
   .drop-col label { display: block; font-size: 12px; font-weight: 700; color: #475569; margin-bottom: 8px; letter-spacing: 0.5px; text-transform: uppercase; }
 
-  /* ── 產出按鈕 ── */
   #generateBtn {
     width: 100%;
     padding: 16px;
@@ -237,7 +228,6 @@
   #generateBtn:hover:not(:disabled) { background: #1d4ed8; transform: translateY(-1px); box-shadow: 0 4px 16px rgba(37,99,235,0.3); }
   #generateBtn:disabled { background: #94a3b8; cursor: not-allowed; transform: none; box-shadow: none; }
 
-  /* ── 進度 ── */
   #progressArea {
     display: none;
     background: white;
@@ -259,7 +249,6 @@
   .progress-step.active .icon { animation: spin 1s linear infinite; display: inline-block; }
   @keyframes spin { to { transform: rotate(360deg); } }
 
-  /* ── 結果 ── */
   #resultArea {
     display: none;
     background: white;
@@ -298,7 +287,6 @@
 </head>
 <body>
 
-<!-- 登入畫面 -->
 <div id="loginScreen">
   <div class="logo">大量科技股份有限公司</div>
   <h1>產銷會議記錄</h1>
@@ -310,7 +298,6 @@
   <div id="loginError"></div>
 </div>
 
-<!-- 主畫面 -->
 <div id="mainScreen">
   <header>
     <div class="brand">大量科技｜產銷會議記錄產生器</div>
@@ -324,16 +311,15 @@
     <div class="page-title">每週產銷會議記錄</div>
     <div class="page-desc">請依序上傳三個檔案，系統將自動產生本週會議記錄 Word 檔。</div>
 
-    <!-- Step 1 -->
     <div class="step-card">
       <div class="step-header">
         <div class="step-num">1</div>
-        <div class="step-title">上傳檔案</div>
+        <div class="step-title">上傳三份檔案</div>
         <div class="step-hint">拖曳或點擊上傳</div>
       </div>
       <div class="drop-grid">
         <div class="drop-col">
-          <label>📹 會議錄影1(必填)</label>
+          <label>📹 會議錄影</label>
           <div class="drop-zone" id="dropMp4" ondragover="dragOver(event,'dropMp4')" ondragleave="dragLeave('dropMp4')" ondrop="dropFile(event,'mp4')">
             <input type="file" accept="video/mp4,.mp4" onchange="fileSelected(event,'mp4')">
             <div class="drop-icon">🎬</div>
@@ -341,16 +327,6 @@
             <div class="drop-accept">MP4 影片</div>
           </div>
           <div id="badgeMp4"></div>
-        </div>
-        <div class="drop-col">
-          <label>🎬 會議錄影2(選填)</label>
-          <div class="drop-zone" id="dropMp4b" ondragover="dragOver(event,'dropMp4b')" ondragleave="dragLeave('dropMp4b')" ondrop="dropFile(event,'mp4b')">
-            <input type="file" accept="video/mp4,.mp4" onchange="fileSelected(event,'mp4b')">
-            <div class="drop-icon">🎬</div>
-            <div class="drop-label"><strong>點擊</strong>或拖曳</div>
-            <div class="drop-accept">若討論太長、影片1剪不完才需要上傳</div>
-          </div>
-          <div id="badgeMp4b"></div>
         </div>
         <div class="drop-col">
           <label>📄 上週會議記錄</label>
@@ -375,7 +351,6 @@
       </div>
     </div>
 
-    <!-- Step 2 產出 -->
     <div class="step-card">
       <div class="step-header">
         <div class="step-num">2</div>
@@ -386,7 +361,6 @@
       </button>
     </div>
 
-    <!-- 進度 -->
     <div id="progressArea">
       <div class="progress-title">處理中，請稍候…</div>
       <div class="progress-steps">
@@ -398,10 +372,8 @@
       </div>
     </div>
 
-    <!-- 錯誤 -->
     <div id="errorArea"></div>
 
-    <!-- 結果 -->
     <div id="resultArea">
       <div class="success-icon">✅</div>
       <h3>會議記錄已產生！</h3>
@@ -410,8 +382,7 @@
     </div>
   </div>
 </div>
-
-<script>
+ <script>
 // ── 設定 ──
 let GEMINI_API_KEY = ''; // 由使用者登入後輸入
 const ACCOUNTS = {
@@ -420,7 +391,7 @@ const ACCOUNTS = {
 };
 
 // ── 狀態 ──
-let files = { mp4: null, mp4b: null, docx: null, xlsx: null };
+let files = { mp4: null, docx: null, xlsx: null };
 let docxBlob = null;
 let docxFilename = '';
 
@@ -453,8 +424,8 @@ function doLogout() {
   document.getElementById('loginApiKey').value = '';
   GEMINI_API_KEY = '';
   document.getElementById('loginError').textContent = '';
-  files = { mp4: null, mp4b: null, docx: null, xlsx: null };
-  ['badgeMp4','badgeMp4b','badgeDocx','badgeXlsx'].forEach(id => document.getElementById(id).innerHTML = '');
+  files = { mp4: null, docx: null, xlsx: null };
+  ['badgeMp4','badgeDocx','badgeXlsx'].forEach(id => document.getElementById(id).innerHTML = '');
   document.getElementById('resultArea').style.display = 'none';
   document.getElementById('progressArea').style.display = 'none';
   document.getElementById('errorArea').style.display = 'none';
@@ -466,7 +437,7 @@ function dragOver(e, id) { e.preventDefault(); document.getElementById(id).class
 function dragLeave(id) { document.getElementById(id).classList.remove('drag-over'); }
 function dropFile(e, type) {
   e.preventDefault();
-  const id = { mp4: 'dropMp4', mp4b: 'dropMp4b', docx: 'dropDocx', xlsx: 'dropXlsx' }[type];
+  const id = { mp4: 'dropMp4', docx: 'dropDocx', xlsx: 'dropXlsx' }[type];
   document.getElementById(id).classList.remove('drag-over');
   const file = e.dataTransfer.files[0];
   if (file) setFile(type, file);
@@ -477,7 +448,7 @@ function fileSelected(e, type) {
 }
 function setFile(type, file) {
   files[type] = file;
-  const badgeId = { mp4: 'badgeMp4', mp4b: 'badgeMp4b', docx: 'badgeDocx', xlsx: 'badgeXlsx' }[type];
+  const badgeId = { mp4: 'badgeMp4', docx: 'badgeDocx', xlsx: 'badgeXlsx' }[type];
   const size = (file.size / 1024 / 1024).toFixed(1);
   document.getElementById(badgeId).innerHTML =
     `<div class="file-badge">✓ ${file.name} <span class="remove" onclick="removeFile('${type}')">×</span></div>`;
@@ -485,7 +456,7 @@ function setFile(type, file) {
 }
 function removeFile(type) {
   files[type] = null;
-  const badgeId = { mp4: 'badgeMp4', mp4b: 'badgeMp4b', docx: 'badgeDocx', xlsx: 'badgeXlsx' }[type];
+  const badgeId = { mp4: 'badgeMp4', docx: 'badgeDocx', xlsx: 'badgeXlsx' }[type];
   document.getElementById(badgeId).innerHTML = '';
   checkReady();
 }
@@ -511,10 +482,9 @@ async function startGenerate() {
   ['step_upload','step_analyze','step_excel','step_prevdocx','step_word'].forEach(s => setStep(s, ''));
 
   try {
-    // Step 1: 上傳影片至 Gemini(影片1必填，影片2選填)
+    // Step 1: 上傳影片至 Gemini
     setStep('step_upload', 'active');
     const videoUri = await uploadVideoToGemini(files.mp4);
-    const videoUri2 = files.mp4b ? await uploadVideoToGemini(files.mp4b) : null;
     setStep('step_upload', 'done');
 
     // Step 1.5: 讀 Excel（提前到影片分析前，因為要把客戶/機型清單當作參考詞彙表給 Gemini）
@@ -529,24 +499,11 @@ async function startGenerate() {
     const analyzeStart = Date.now();
     const analyzeTimer = setInterval(() => {
       const secs = Math.floor((Date.now() - analyzeStart) / 1000);
-      const label = videoUri2 ? '分析影片1' : 'AI 分析會議影片內容';
-      analyzeLabel.lastChild.textContent = ` ${label}（已等待 ${secs} 秒，影片較長時可能需要數分鐘）`;
+      analyzeLabel.lastChild.textContent = ` AI 分析會議影片內容（已等待 ${secs} 秒，影片較長時可能需要數分鐘）`;
     }, 1000);
     let transcript;
     try {
-      transcript = await analyzeVideo(videoUri, glossary, false);
-      if (videoUri2) {
-        analyzeLabel.lastChild.textContent = ' 分析影片2（延續片段）...';
-        const transcript2 = await analyzeVideo(videoUri2, glossary, true);
-        // 合併兩段結果：影片1在前、影片2接續在後
-        ['taiwan_other', 'nanjing_other', 'lianshui_other'].forEach(k => {
-          const a = (transcript[k] || '').trim();
-          const b = (transcript2[k] || '').trim();
-          if (a && b) transcript[k] = a + '\n' + b;
-          else transcript[k] = a || b;
-        });
-        transcript.material_notes = [transcript.material_notes, transcript2.material_notes].filter(Boolean).join('\n');
-      }
+      transcript = await analyzeVideo(videoUri, glossary);
     } finally {
       clearInterval(analyzeTimer);
     }
@@ -638,21 +595,13 @@ function collapseRepetition(text) {
 }
 
 // ── Gemini 分析影片 ──
-async function analyzeVideo(videoUri, glossary, isContinuation) {
+async function analyzeVideo(videoUri, glossary) {
   glossary = glossary || { customers: [], models: [] };
   const glossaryBlock = (glossary.customers.length || glossary.models.length)
     ? `\n\n為了提升專有名詞辨識準確度，以下是本次會議可能會提到的客戶名稱與機型代號清單，如果聽到發音相近的詞，請優先比對這份清單來判斷正確寫法；如果清單裡真的找不到對應的，就照聽到的實際發音寫出來即可，不要硬套清單裡的詞：\n【客戶名稱清單】\n${glossary.customers.join('、')}\n【機型代號清單】\n${glossary.models.join('、')}`
     : '';
 
-  const prompt = isContinuation
-    ? `這是一段產銷會議錄影的「延續片段」(前一段已經另外處理過，這段是接續的討論內容，不包含主席詢問「有事情要討論嗎」那句開場)。請完成以下任務：
-
-1. 請將這整段影片裡台灣、南京、漣水各廠的發言內容盡量逐字轉錄，包含對照畫面討論的細節。
-2. 如果有提到物料管理相關的數字（如主軸在庫數量、控制器數量等），請一併記錄。${glossaryBlock}
-
-請用以下 JSON 格式回覆，只回覆 JSON，不要有任何重複贅述、不要重複輸出同一句話：
-{"taiwan_other":"台灣廠發言逐字內容","nanjing_other":"南京廠發言逐字內容","lianshui_other":"漣水廠發言逐字內容","material_notes":"物料管理相關內容（如無則填空字串）","meeting_date_hint":""}`
-    : `這是一個產銷會議錄影。請完成以下兩個任務：
+  const prompt = `這是一個產銷會議錄影。請完成以下兩個任務：
 
 1. 找出會議中主席詢問「南京有事情要討論嗎」或「漣水有事情要討論嗎」或「台灣有事情要討論嗎」之後的討論內容，這段是"其他事項"。請逐字轉錄台灣、南京、漣水各廠的發言內容，盡量完整，包含對照畫面討論的細節。
 
@@ -751,28 +700,24 @@ async function readExcel(file) {
         const wb = XLSX.read(e.target.result, { type: 'array' });
         const data = {};
 
-        // 產能供給
         if (wb.SheetNames.includes('產能供給')) {
           const ws = wb.Sheets['產能供給'];
           const rows = XLSX.utils.sheet_to_json(ws, { header: 1, defval: '' });
           data.capacity = rows;
         }
 
-        // 庫存機
         if (wb.SheetNames.includes('庫存機')) {
           const ws = wb.Sheets['庫存機'];
           const rows = XLSX.utils.sheet_to_json(ws, { header: 1, defval: '' });
           data.inventory = rows;
         }
 
-        // 庫存去化案
         if (wb.SheetNames.includes('庫存去化案')) {
           const ws = wb.Sheets['庫存去化案'];
           const rows = XLSX.utils.sheet_to_json(ws, { header: 1, defval: '' });
           data.reduction = rows;
         }
 
-        // 投產計畫表7月
         const julySheet = wb.SheetNames.find(n => n.includes('投產') && n.includes('7'));
         if (julySheet) {
           const ws = wb.Sheets[julySheet];
@@ -783,14 +728,12 @@ async function readExcel(file) {
         resolve(data);
       } catch(err) { reject(err); }
     };
-    reader.onerror = reject;
+   reader.onerror = reject;
     reader.readAsArrayBuffer(file);
   });
 }
 
 // ── 讀取上週會議記錄(docx),取出每一項「決議事項」欄位的完整內容 ──
-// 用途:第1、2、8、11項目前沒有 Excel/影片資料可以更新,預設沿用上週實際文件的內容,
-// 而不是把某一週的文字寫死在程式碼裡(這是之前造成「舊紀錄夾雜、內容跑到錯的項次」的根本原因)。
 async function parsePreviousDocx(file) {
   const items = {};
   if (!file) return items;
@@ -801,7 +744,6 @@ async function parsePreviousDocx(file) {
     const htmlDoc = parser.parseFromString(result.value, 'text/html');
     const tables = htmlDoc.querySelectorAll('table');
 
-    // 找出「項次/決議事項」那張主表:列數最多的表格
     let mainTable = null, maxRows = 0;
     tables.forEach(t => {
       const rows = t.querySelectorAll('tr').length;
@@ -817,8 +759,6 @@ async function parsePreviousDocx(file) {
       if (!m) return;
       const itemNum = parseInt(m[1], 10);
 
-      // 決議事項欄位:每個 <p> 對應原本 Word 裡的一行,用 \n 接回來
-      // 注意:Word 裡有項目符號(●)格式的段落,mammoth 會轉成 <li> 而不是 <p>,兩種都要抓
       const paras = cells[1].querySelectorAll('p, li');
       let lines;
       if (paras.length > 0) {
@@ -850,27 +790,23 @@ function extractNumbers(excelData) {
 
   const cap = excelData.capacity || [];
 
-  // DEBUG: 印出關鍵行
   console.log('=== Excel Debug ===');
   [71,72,124,125,151,152].forEach(i => {
     if (cap[i]) console.log(`Row${i+1}: r0="${cap[i][0]}" r2=${cap[i][2]} r4=${cap[i][4]} r8=${cap[i][8]} r10=${cap[i][10]} r14=${cap[i][14]} r16=${cap[i][16]}`);
   });
 
-  // 掃描所有行
   let foundWip = false, foundLastDone = false, foundThisPlan = false;
   for (let i = 0; i < cap.length; i++) {
     const row = cap[i];
     if (!row || row.length === 0) continue;
     const r0 = String(row[0] || '');
 
-    // 6月投產：row結構 [TW/6月投產, _, 數字, 產能, _, _, NJ/6月投产, _, 數字, ...]
     if (r0.includes('6月投')) {
       if (typeof row[2] === 'number' && result.cap6_tw === '－') result.cap6_tw = String(row[2]);
       if (typeof row[8] === 'number' && result.cap6_nj === '－') result.cap6_nj = String(row[8]);
       if (typeof row[14] === 'number' && result.cap6_ls === '－') result.cap6_ls = String(row[14]);
     }
 
-    // WIP：找「二、未完工在製品」後的TW行（col4有數字）
     if (r0.includes('未完工')) { foundWip = true; continue; }
     if (foundWip && r0 === 'TW' && typeof row[4] === 'number' && row[4] > 0) {
       result.wip_tw = String(row[4]);
@@ -879,14 +815,12 @@ function extractNumbers(excelData) {
       foundWip = false;
     }
 
-    // 上週完工標題行
     if (r0.includes('上週完工') || r0.includes('4-2上')) {
       foundLastDone = true;
       const m = r0.match(/[（(]([^）)]+)[）)]/);
       if (m) result.weekLabel_last = m[1];
       continue;
     }
-    // 上週完工數字行（TW行，col2有數字，col3含達成率）
     if (foundLastDone && r0 === 'TW' && typeof row[2] === 'number') {
       result.last_done_tw = String(row[2]);
       if (typeof row[8] === 'number') result.last_done_nj = String(row[8]);
@@ -894,14 +828,12 @@ function extractNumbers(excelData) {
       foundLastDone = false;
     }
 
-    // 本週完工計畫標題行
     if (r0.includes('本週完工') || r0.includes('4-3本')) {
       foundThisPlan = true;
       const m = r0.match(/[（(]([^）)]+)[）)]/);
       if (m) result.weekLabel_this = m[1];
       continue;
     }
-    // 本週完工計畫數字行
     if (foundThisPlan && r0 === 'TW' && typeof row[2] === 'number') {
       result.this_plan_tw = String(row[2]);
       if (typeof row[8] === 'number') result.this_plan_nj = String(row[8]);
@@ -910,7 +842,6 @@ function extractNumbers(excelData) {
     }
   }
 
-  // 7月投產
   const july = excelData.julyPlan || [];
   for (let i = 0; i < Math.min(july.length, 5); i++) {
     const row = july[i];
@@ -923,7 +854,6 @@ function extractNumbers(excelData) {
     }
   }
 
-  // 庫存機：TW後第2行 row[0]=總數, row[1]=有客戶數
   const inv = excelData.inventory || [];
   let curSection = '';
   for (let i = 0; i < inv.length; i++) {
@@ -933,7 +863,7 @@ function extractNumbers(excelData) {
     if (r0 === 'TW') { curSection = 'TW'; continue; }
     if (r0 === 'NJ') { curSection = 'NJ'; continue; }
     if (r0 === 'LS') { curSection = 'LS'; continue; }
-    if (r0 === '總計') continue; // 跳過表頭
+    if (r0 === '總計') continue;
     if (curSection && typeof row[0] === 'number' && row[0] > 5 && typeof row[1] === 'number') {
       const total = row[0], has = row[1], no = total - has;
       if (curSection === 'TW' && result.inv_tw_total === '－') {
@@ -949,8 +879,7 @@ function extractNumbers(excelData) {
   return result;
 }
 
-// ── 第8項「庫存去化案」:抓「庫存去化案」工作表裡「總計」列,最右邊(最新一週)的數字 ──
-// 該表格每週會往右新增一欄,所以不能用固定欄位,要從最後一欄往左找第一個數字
+// ── 第8項「庫存去化案」──
 function extractReductionTotal(excelData) {
   const rows = excelData.reduction;
   if (!rows || rows.length === 0) return null;
@@ -968,8 +897,7 @@ function extractReductionTotal(excelData) {
   return { thisWeek: nums[0], lastWeek: nums.length > 1 ? nums[1] : null };
 }
 
-// ── 從「投產計畫表」抓「客戶」「機型」清單，當作 Gemini 辨識時的參考詞彙表 ──
-// 該分頁是台灣/南京/漣水三廠並排的表格，每個廠各有自己的「客戶」「機型」欄位
+// ── 從「投產計畫表」抓「客戶」「機型」清單 ──
 function extractCustomerAndModelList(excelData) {
   const rows = excelData.julyPlan || [];
   const customers = new Set();
@@ -1011,7 +939,6 @@ function extractCustomerAndModelList(excelData) {
 // ── 計算本週日期 ──
 function getMeetingDate() {
   const now = new Date();
-  // 找最近的週一
   const day = now.getDay();
   const diff = day === 0 ? -6 : 1 - day;
   const monday = new Date(now);
@@ -1030,7 +957,7 @@ async function buildDocx(transcript, excelData, prevItems) {
 
   const nums = extractNumbers(excelData);
   const meetingDate = getMeetingDate();
-  const year = new Date().getFullYear() - 1911; // 民國年
+  const year = new Date().getFullYear() - 1911;
   const filename = `產銷會議記錄${String(year).slice(-2)}${String(new Date().getMonth()+1).padStart(2,'0')}${String(new Date().getDate()).padStart(2,'0')}.docx`;
 
   const bdr = { style: BorderStyle.SINGLE, size: 4, color: "000000" };
@@ -1064,23 +991,17 @@ async function buildDocx(transcript, excelData, prevItems) {
   const W = 9200;
   const c1=680, c2=5640, c3=1440, c4=1440;
 
-  // 其他事項內容
   const twOther = transcript.taiwan_other || '（無）';
   const njOther = transcript.nanjing_other || '（無）';
   const lsOther = transcript.lianshui_other || '（無）';
 
-  // 第9項「物料管理」:優先用這次影片裡 Gemini 分析到的內容,沒提到的話才沿用上週記錄
   const matNotes = transcript.material_notes
     || (prevItems[9] ? prevItems[9].replace(/^【[^】]*】\n?/, '') : '')
     || '（請參考上週記錄）';
 
-  // 第1項:妳會自己貼六個月銷售預測的截圖進去,這裡只留提示文字,不用自動產生內容
   const item1Content = '【六個月銷售預測（備料異動）】\n（請貼上六個月銷售預測截圖）';
-
-  // 第2項:固定顯示「無」
   const item2Content = '【上週產銷追踪】\n無。';
 
-  // 第8項:從 Excel「庫存去化案」工作表的「總計」列動態抓最新一週的數字
   const reduction = extractReductionTotal(excelData);
   let item8Content;
   if (reduction && reduction.thisWeek != null) {
@@ -1093,10 +1014,8 @@ async function buildDocx(transcript, excelData, prevItems) {
     item8Content = prevItems[8] || '【庫存去化案】\n本週無異動。';
   }
 
-  // 第11項:固定顯示「無」(與第2項相同模式;若之後有需要改成動態,再告訴我)
   const item11Content = '【上級指導總結】\n無。';
 
-  // 週完工標籤
   const lastWeekRange = nums.weekLabel_last || '上週';
   const thisWeekRange = nums.weekLabel_this || '本週';
 
@@ -1115,7 +1034,6 @@ async function buildDocx(transcript, excelData, prevItems) {
         new Paragraph({ alignment: AlignmentType.CENTER, spacing: { before: 0, after: 160 },
           children: [new TextRun({ text: "會議紀錄", bold: true, size: 28, font: "標楷體" })] }),
 
-        // 基本資訊
         new Table({
           width: { size: W, type: WidthType.DXA },
           columnWidths: [Math.floor(W/3), Math.floor(W/3), W - Math.floor(W/3)*2],
@@ -1131,65 +1049,52 @@ async function buildDocx(transcript, excelData, prevItems) {
 
         new Paragraph({ spacing: { before: 80, after: 0 }, children: [] }),
 
-        // 主表
         new Table({
           width: { size: W, type: WidthType.DXA },
           columnWidths: [c1, c2, c3, c4],
           rows: [
-            // 表頭
             R(H("項次",{size:20,width:c1,align:AlignmentType.CENTER}), H("決議事項",{size:20,width:c2,align:AlignmentType.CENTER}), H("擔當者",{size:20,width:c3,align:AlignmentType.CENTER}), H("完成期限",{size:20,width:c4,align:AlignmentType.CENTER})),
 
-            // 1 六個月銷售預測(沿用上週記錄,無新資料來源)
             R(C("1.",{size:20,width:c1,align:AlignmentType.CENTER}),
               C(item1Content,{size:20,width:c2}),
               C("營業部\n生管\n資材",{size:20,width:c3,align:AlignmentType.CENTER}), C("即日起",{size:20,width:c4,align:AlignmentType.CENTER})),
 
-            // 2 上週產銷追踪(沿用上週記錄,無新資料來源)
             R(C("2.",{size:20,width:c1,align:AlignmentType.CENTER}),
               C(item2Content,{size:20,width:c2}),
               C("各廠",{size:20,width:c3,align:AlignmentType.CENTER}), C("即日起",{size:20,width:c4,align:AlignmentType.CENTER})),
 
-            // 3 產能供給
             R(C("3.",{size:20,width:c1,align:AlignmentType.CENTER}),
               C(`【產能供給（6月投產）】\n● 台灣廠：${nums.cap6_tw} 台\n● 南京廠：${nums.cap6_nj} 台\n● 漣水廠：${nums.cap6_ls} 台`,{size:20,width:c2}),
               C("營業部\n南京廠\n漣水廠",{size:20,width:c3,align:AlignmentType.CENTER}), C("即日起",{size:20,width:c4,align:AlignmentType.CENTER})),
 
-            // 4 WIP
             R(C("4.",{size:20,width:c1,align:AlignmentType.CENTER}),
               C(`【未完工在製品 (WIP)】\n● 台灣廠：${nums.wip_tw} 台\n● 南京廠：${nums.wip_nj} 台\n● 漣水廠：${nums.wip_ls} 台`,{size:20,width:c2}),
               C("生管\n資材部\n生產部",{size:20,width:c3,align:AlignmentType.CENTER}), C("即日起",{size:20,width:c4,align:AlignmentType.CENTER})),
 
-            // 5 週產能追蹤
             R(C("5.",{size:20,width:c1,align:AlignmentType.CENTER}),
               C(`【週產能追蹤】\n● 上週完工 (${lastWeekRange})：台灣廠 ${nums.last_done_tw} 台；南京廠 ${nums.last_done_nj} 台；漣水廠 ${nums.last_done_ls} 台。\n● 本週完工計畫 (${thisWeekRange})：台灣廠計 ${nums.this_plan_tw} 台；南京廠計 ${nums.this_plan_nj} 台；漣水廠計 ${nums.this_plan_ls} 台。`,{size:20,width:c2}),
               C("生管\n資材部\n生產部\n品保部",{size:20,width:c3,align:AlignmentType.CENTER}), C("即日起",{size:20,width:c4,align:AlignmentType.CENTER})),
 
-            // 6 7月投產計畫
             R(C("6.",{size:20,width:c1,align:AlignmentType.CENTER}),
               C(`【投產計畫表 (7月)】\n● 台灣廠：${nums.cap7_tw} 台\n● 南京廠：${nums.cap7_nj} 台\n● 漣水廠：${nums.cap7_ls} 台`,{size:20,width:c2}),
               C("營業部\n生管",{size:20,width:c3,align:AlignmentType.CENTER}), C("即日起",{size:20,width:c4,align:AlignmentType.CENTER})),
 
-            // 7 庫存機
             R(C("7.",{size:20,width:c1,align:AlignmentType.CENTER}),
               C(`【庫存機統計】\n● 台灣廠：${nums.inv_tw_total} 台 (有客戶 ${nums.inv_tw_has} / 無客戶 ${nums.inv_tw_no})\n● 南京廠：${nums.inv_nj_total} 台 (有客戶 ${nums.inv_nj_has} / 無客戶 ${nums.inv_nj_no})\n● 漣水廠：${nums.inv_ls_total} 台 (有客戶 ${nums.inv_ls_has} / 無客戶 ${nums.inv_ls_no})`,{size:20,width:c2}),
               C("營業部\n生管",{size:20,width:c3,align:AlignmentType.CENTER}), C("即日起",{size:20,width:c4,align:AlignmentType.CENTER})),
 
-            // 8 庫存去化案(沿用上週記錄,無新資料來源)
             R(C("8.",{size:20,width:c1,align:AlignmentType.CENTER}),
               C(item8Content,{size:20,width:c2}),
               C("營業部\n生管\n資材部",{size:20,width:c3,align:AlignmentType.CENTER}), C("即日起",{size:20,width:c4,align:AlignmentType.CENTER})),
 
-            // 9 物料管理
             R(C("9.",{size:20,width:c1,align:AlignmentType.CENTER}),
               C(`【物料管理】\n${matNotes}`,{size:20,width:c2}),
               C("資材部",{size:20,width:c3,align:AlignmentType.CENTER}), C("即日起",{size:20,width:c4,align:AlignmentType.CENTER})),
 
-            // 10 其他事項
             R(C("10.",{size:20,width:c1,align:AlignmentType.CENTER}),
               C(`【其他事項】\n●台灣：\n${twOther}\n\n●南京：\n${njOther}\n\n●漣水：\n${lsOther}`,{size:20,width:c2}),
               C("各廠",{size:20,width:c3,align:AlignmentType.CENTER}), C("即日起",{size:20,width:c4,align:AlignmentType.CENTER})),
 
-            // 11 上級指導(沿用上週記錄,無新資料來源)
             R(C("11.",{size:20,width:c1,align:AlignmentType.CENTER}),
               C(item11Content,{size:20,width:c2}),
               C("",{size:20,width:c3}), C("",{size:20,width:c4})),
