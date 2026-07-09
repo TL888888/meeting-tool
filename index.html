@@ -4,7 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>大量科技｜產銷會議記錄產生器</title>
-<!-- BUILD VERSION: 2026-07-08-v9 (單獨測試maxOutputTokens，不含thinkingConfig) -->
+<!-- BUILD VERSION: 2026-07-09-v10 (新增可選的影片2上傳，用於較長會議分兩段處理) -->
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
 <script src="https://unpkg.com/docx@8.5.0/build/index.umd.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/mammoth/1.6.0/mammoth.browser.min.js"></script>
@@ -208,8 +208,11 @@
   /* ── 三欄拖曳 ── */
   .drop-grid {
     display: grid;
-    grid-template-columns: 1fr 1fr 1fr;
+    grid-template-columns: repeat(4, 1fr);
     gap: 14px;
+  }
+  @media (max-width: 720px) {
+    .drop-grid { grid-template-columns: 1fr 1fr; }
   }
   .drop-col label { display: block; font-size: 12px; font-weight: 700; color: #475569; margin-bottom: 8px; letter-spacing: 0.5px; text-transform: uppercase; }
 
@@ -325,12 +328,12 @@
     <div class="step-card">
       <div class="step-header">
         <div class="step-num">1</div>
-        <div class="step-title">上傳三份檔案</div>
+        <div class="step-title">上傳檔案</div>
         <div class="step-hint">拖曳或點擊上傳</div>
       </div>
       <div class="drop-grid">
         <div class="drop-col">
-          <label>📹 會議錄影</label>
+          <label>📹 會議錄影1(必填)</label>
           <div class="drop-zone" id="dropMp4" ondragover="dragOver(event,'dropMp4')" ondragleave="dragLeave('dropMp4')" ondrop="dropFile(event,'mp4')">
             <input type="file" accept="video/mp4,.mp4" onchange="fileSelected(event,'mp4')">
             <div class="drop-icon">🎬</div>
@@ -338,6 +341,16 @@
             <div class="drop-accept">MP4 影片</div>
           </div>
           <div id="badgeMp4"></div>
+        </div>
+        <div class="drop-col">
+          <label>🎬 會議錄影2(選填)</label>
+          <div class="drop-zone" id="dropMp4b" ondragover="dragOver(event,'dropMp4b')" ondragleave="dragLeave('dropMp4b')" ondrop="dropFile(event,'mp4b')">
+            <input type="file" accept="video/mp4,.mp4" onchange="fileSelected(event,'mp4b')">
+            <div class="drop-icon">🎬</div>
+            <div class="drop-label"><strong>點擊</strong>或拖曳</div>
+            <div class="drop-accept">若討論太長、影片1剪不完才需要上傳</div>
+          </div>
+          <div id="badgeMp4b"></div>
         </div>
         <div class="drop-col">
           <label>📄 上週會議記錄</label>
@@ -407,7 +420,7 @@ const ACCOUNTS = {
 };
 
 // ── 狀態 ──
-let files = { mp4: null, docx: null, xlsx: null };
+let files = { mp4: null, mp4b: null, docx: null, xlsx: null };
 let docxBlob = null;
 let docxFilename = '';
 
@@ -440,8 +453,8 @@ function doLogout() {
   document.getElementById('loginApiKey').value = '';
   GEMINI_API_KEY = '';
   document.getElementById('loginError').textContent = '';
-  files = { mp4: null, docx: null, xlsx: null };
-  ['badgeMp4','badgeDocx','badgeXlsx'].forEach(id => document.getElementById(id).innerHTML = '');
+  files = { mp4: null, mp4b: null, docx: null, xlsx: null };
+  ['badgeMp4','badgeMp4b','badgeDocx','badgeXlsx'].forEach(id => document.getElementById(id).innerHTML = '');
   document.getElementById('resultArea').style.display = 'none';
   document.getElementById('progressArea').style.display = 'none';
   document.getElementById('errorArea').style.display = 'none';
@@ -453,7 +466,7 @@ function dragOver(e, id) { e.preventDefault(); document.getElementById(id).class
 function dragLeave(id) { document.getElementById(id).classList.remove('drag-over'); }
 function dropFile(e, type) {
   e.preventDefault();
-  const id = { mp4: 'dropMp4', docx: 'dropDocx', xlsx: 'dropXlsx' }[type];
+  const id = { mp4: 'dropMp4', mp4b: 'dropMp4b', docx: 'dropDocx', xlsx: 'dropXlsx' }[type];
   document.getElementById(id).classList.remove('drag-over');
   const file = e.dataTransfer.files[0];
   if (file) setFile(type, file);
@@ -464,7 +477,7 @@ function fileSelected(e, type) {
 }
 function setFile(type, file) {
   files[type] = file;
-  const badgeId = { mp4: 'badgeMp4', docx: 'badgeDocx', xlsx: 'badgeXlsx' }[type];
+  const badgeId = { mp4: 'badgeMp4', mp4b: 'badgeMp4b', docx: 'badgeDocx', xlsx: 'badgeXlsx' }[type];
   const size = (file.size / 1024 / 1024).toFixed(1);
   document.getElementById(badgeId).innerHTML =
     `<div class="file-badge">✓ ${file.name} <span class="remove" onclick="removeFile('${type}')">×</span></div>`;
@@ -472,7 +485,7 @@ function setFile(type, file) {
 }
 function removeFile(type) {
   files[type] = null;
-  const badgeId = { mp4: 'badgeMp4', docx: 'badgeDocx', xlsx: 'badgeXlsx' }[type];
+  const badgeId = { mp4: 'badgeMp4', mp4b: 'badgeMp4b', docx: 'badgeDocx', xlsx: 'badgeXlsx' }[type];
   document.getElementById(badgeId).innerHTML = '';
   checkReady();
 }
@@ -498,9 +511,10 @@ async function startGenerate() {
   ['step_upload','step_analyze','step_excel','step_prevdocx','step_word'].forEach(s => setStep(s, ''));
 
   try {
-    // Step 1: 上傳影片至 Gemini
+    // Step 1: 上傳影片至 Gemini(影片1必填，影片2選填)
     setStep('step_upload', 'active');
     const videoUri = await uploadVideoToGemini(files.mp4);
+    const videoUri2 = files.mp4b ? await uploadVideoToGemini(files.mp4b) : null;
     setStep('step_upload', 'done');
 
     // Step 1.5: 讀 Excel（提前到影片分析前，因為要把客戶/機型清單當作參考詞彙表給 Gemini）
@@ -515,11 +529,24 @@ async function startGenerate() {
     const analyzeStart = Date.now();
     const analyzeTimer = setInterval(() => {
       const secs = Math.floor((Date.now() - analyzeStart) / 1000);
-      analyzeLabel.lastChild.textContent = ` AI 分析會議影片內容（已等待 ${secs} 秒，影片較長時可能需要數分鐘）`;
+      const label = videoUri2 ? '分析影片1' : 'AI 分析會議影片內容';
+      analyzeLabel.lastChild.textContent = ` ${label}（已等待 ${secs} 秒，影片較長時可能需要數分鐘）`;
     }, 1000);
     let transcript;
     try {
-      transcript = await analyzeVideo(videoUri, glossary);
+      transcript = await analyzeVideo(videoUri, glossary, false);
+      if (videoUri2) {
+        analyzeLabel.lastChild.textContent = ' 分析影片2（延續片段）...';
+        const transcript2 = await analyzeVideo(videoUri2, glossary, true);
+        // 合併兩段結果：影片1在前、影片2接續在後
+        ['taiwan_other', 'nanjing_other', 'lianshui_other'].forEach(k => {
+          const a = (transcript[k] || '').trim();
+          const b = (transcript2[k] || '').trim();
+          if (a && b) transcript[k] = a + '\n' + b;
+          else transcript[k] = a || b;
+        });
+        transcript.material_notes = [transcript.material_notes, transcript2.material_notes].filter(Boolean).join('\n');
+      }
     } finally {
       clearInterval(analyzeTimer);
     }
@@ -611,13 +638,21 @@ function collapseRepetition(text) {
 }
 
 // ── Gemini 分析影片 ──
-async function analyzeVideo(videoUri, glossary) {
+async function analyzeVideo(videoUri, glossary, isContinuation) {
   glossary = glossary || { customers: [], models: [] };
   const glossaryBlock = (glossary.customers.length || glossary.models.length)
     ? `\n\n為了提升專有名詞辨識準確度，以下是本次會議可能會提到的客戶名稱與機型代號清單，如果聽到發音相近的詞，請優先比對這份清單來判斷正確寫法；如果清單裡真的找不到對應的，就照聽到的實際發音寫出來即可，不要硬套清單裡的詞：\n【客戶名稱清單】\n${glossary.customers.join('、')}\n【機型代號清單】\n${glossary.models.join('、')}`
     : '';
 
-  const prompt = `這是一個產銷會議錄影。請完成以下兩個任務：
+  const prompt = isContinuation
+    ? `這是一段產銷會議錄影的「延續片段」(前一段已經另外處理過，這段是接續的討論內容，不包含主席詢問「有事情要討論嗎」那句開場)。請完成以下任務：
+
+1. 請將這整段影片裡台灣、南京、漣水各廠的發言內容盡量逐字轉錄，包含對照畫面討論的細節。
+2. 如果有提到物料管理相關的數字（如主軸在庫數量、控制器數量等），請一併記錄。${glossaryBlock}
+
+請用以下 JSON 格式回覆，只回覆 JSON，不要有任何重複贅述、不要重複輸出同一句話：
+{"taiwan_other":"台灣廠發言逐字內容","nanjing_other":"南京廠發言逐字內容","lianshui_other":"漣水廠發言逐字內容","material_notes":"物料管理相關內容（如無則填空字串）","meeting_date_hint":""}`
+    : `這是一個產銷會議錄影。請完成以下兩個任務：
 
 1. 找出會議中主席詢問「南京有事情要討論嗎」或「漣水有事情要討論嗎」或「台灣有事情要討論嗎」之後的討論內容，這段是"其他事項"。請逐字轉錄台灣、南京、漣水各廠的發言內容，盡量完整，包含對照畫面討論的細節。
 
